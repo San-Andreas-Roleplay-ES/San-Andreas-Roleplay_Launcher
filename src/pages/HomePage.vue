@@ -7,16 +7,21 @@ import EventsCarousel from "@/components/home/EventsCarousel.vue"
 import EventModal from "@/components/home/EventModal.vue"
 import LogoMark from "@/components/brand/LogoMark.vue"
 import ServerStatus from "@/components/home/ServerStatus.vue"
+import ConnectionLog from "@/components/home/ConnectionLog.vue"
 import { useHealthCheckStore } from "@/stores/healthCheck"
 import { useEvents } from "@/composables/useEvents"
 import { useRotatingTagline } from "@/composables/useRotatingTagline"
 import { useGameStatus } from "@/composables/useGameStatus"
 import type { ServerEvent } from "@/api/public"
+import WoozieToast from "@/components/home/WoozieAd.vue"
+import { useWoozieAlerts } from "@/composables/useWoozieAlerts"
+import WoozieAd from "@/components/home/WoozieAd.vue"
 
+const { current, dismiss } = useWoozieAlerts()
 const health = useHealthCheckStore()
 const { events, loading: eventsLoading, load: loadEvents } = useEvents()
 const { tagline } = useRotatingTagline()
-const { phase, launchMessage, launch } = useGameStatus()
+const { phase, launchMessage, launch, entries } = useGameStatus()
 const blockHint = ref<string | null>(null)
 const selectedIndex = ref<number | null>(null)
 
@@ -181,6 +186,8 @@ function showBlockHint() {
           </div>
         </div>
       </header>
+      
+      <WoozieAd :alert="current" @dismiss="dismiss" />
 
       <div class="grid w-full grid-cols-[1fr_auto] items-stretch gap-3">
         <HealthCheckList />
@@ -194,7 +201,7 @@ function showBlockHint() {
           @signup="openSignup"
         />
       </div>
-
+      <ConnectionLog :entries="entries" />
       <EventsCarousel :events="events" :loading="eventsLoading" @open="openEvent" />
     </div>
 

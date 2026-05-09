@@ -67,3 +67,34 @@ export async function fetchEvents(): Promise<ServerEvent[]> {
   const raw = await getJson<RawServerEvent[]>("/launcher/events.json")
   return raw.map(normalizeEvent)
 }
+
+// alertas de woozie, triple exp, monedas fichas, mantenimiento, anuncios grales
+export interface WoozieAlert {
+  id: number
+  active: boolean
+  message: string
+  type: "bonus" | "event" | "maintenance" | "announcement"
+  expires: string | null
+}
+
+const ALERTS_URL = import.meta.env.VITE_ALERTS_URL || null
+
+export async function fetchWoozieAlerts(): Promise<WoozieAlert[]> {
+  if (!ALERTS_URL) return []
+
+  try {
+    const res = await window.launcher.cdnGet<WoozieAlert | WoozieAlert[]>(ALERTS_URL)
+    if (!res.ok || res.data === null) return []
+
+    const raw = Array.isArray(res.data) ? res.data : [res.data]
+    const now = Date.now()
+
+    return raw.filter((alert) => {
+      if (!alert.active) return false
+      if (alert.expires && new Date(alert.expires).getTime() < now) return false
+      return true
+    })
+  } catch {
+    return []
+  }
+}
