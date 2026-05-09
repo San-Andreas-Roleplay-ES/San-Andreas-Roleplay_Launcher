@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, ref } from "vue"
+import { useConnectionLog } from "@/composables/useConnectionLog"
 
 export type GamePhase = "idle" | "launching" | "in-game"
 
@@ -13,6 +14,7 @@ const LAUNCH_TIMEOUT_MS = 12_000
 export function useGameStatus() {
   const phase = ref<GamePhase>("idle")
   const launchMessage = ref<string>(LAUNCH_MESSAGES[0].text)
+  const { push, entries, clear } = useConnectionLog()
 
   let messageTimers: Array<ReturnType<typeof setTimeout>> = []
   let launchTimeoutTimer: ReturnType<typeof setTimeout> | null = null
@@ -46,13 +48,20 @@ export function useGameStatus() {
 
   async function launch(host: string, port: number) {
     if (phase.value !== "idle") return
+    clear()
     phase.value = "launching"
+    push("Verificando estado del juego...")
     scheduleLaunchMessages()
 
+    push(`Conectando a ${host}:${port}...`)
     const result = await window.launcher.launchGame({ host, port })
+
     if (!result.ok) {
+      push(result.error ?? "Error desconocido", "error")
       phase.value = "idle"
       clearTimers()
+    } else {
+      push("SA:MP iniciado", "ok")
     }
   }
 
@@ -76,5 +85,5 @@ export function useGameStatus() {
     if (unsubscribe) unsubscribe()
   })
 
-  return { phase, launchMessage, launch }
+  return { phase, launchMessage, launch, entries }
 }
