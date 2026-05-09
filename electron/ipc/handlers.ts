@@ -15,12 +15,13 @@ import { checkCache, checkGta, checkSamp } from "../services/health"
 import { getGameStatus, launchGame } from "../services/launcher"
 import { cdnGet } from "../services/cdn"
 import { pingServer } from "../services/sampQuery"
+import { tryLock, unlock, currentTask } from "../services/installCheck"
 import { fetchManifest, getCachedManifest, refreshManifest } from "../services/manifest"
 import type { LauncherManifest } from "../services/manifest"
 import { verifySampFiles } from "../services/sampVerify"
 import type { SampVerificationResult } from "../services/sampVerify"
 import { installSamp, canWriteToGameDir } from "../services/sampInstall"
-import type { InstallProgress, InstallResult } from "../services/sampInstall"
+import type { InstallProºgress, InstallResult } from "../services/sampInstall"
 import { quitAndInstall } from "../services/updater"
 
 export function registerIpcHandlers() {
@@ -85,11 +86,18 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle(IPC.SAMP_INSTALL, async (event): Promise<InstallResult> => {
+    if (!tryLock("samp")){
+      const busy = currentTask()
+      return { ok: false, error: `Ya se está instalando (${busy}).` }
+    }
+    try {
     const send = (progress: InstallProgress) => {
       if (event.sender.isDestroyed()) return
       event.sender.send(IPC.SAMP_INSTALL_PROGRESS, progress)
     }
     return installSamp(send)
+  } finally {
+    unlock("samp")}
   })
 
   ipcMain.handle(IPC.SAMP_INSTALL_REQUIRES_ELEVATION, async (): Promise<boolean> => {
@@ -117,6 +125,12 @@ export function registerIpcHandlers() {
       if (typeof payload?.targetDir !== "string") {
         return { ok: false, error: "Falta la carpeta destino." }
       }
+
+      if (!tryLock("gta")){
+          const busy = currentTask()
+          return { ok: false, error: `Ya se está instalando (${busy}).` }
+      }
+      try {
       const send = (progress: GtaInstallProgress) => {
         if (event.sender.isDestroyed()) return
         event.sender.send(IPC.GTA_INSTALL_PROGRESS, progress)
@@ -128,15 +142,26 @@ export function registerIpcHandlers() {
         store.set("gtaPath", payload.targetDir)
       }
       return result
-    },
+    } finally {
+      unlock("gta")
+    }
+  },
   )
 
   ipcMain.handle(IPC.CACHE_INSTALL, async (event): Promise<CacheInstallResult> => {
+    if (!tryLock("cache")) {
+      const busy = currentTask()
+      return { ok: false, error: `Ya se está instalando (${busy}).` }
+    }
+    try {
     const send = (progress: CacheInstallProgress) => {
       if (event.sender.isDestroyed()) return
       event.sender.send(IPC.CACHE_INSTALL_PROGRESS, progress)
     }
-    return installCache(send)
+    return await installCache(send)
+  } finally {
+    unlock("cache")
+    }
   })
 
   ipcMain.handle(IPC.APP_GET_VERSION, async (): Promise<string> => app.getVersion())
