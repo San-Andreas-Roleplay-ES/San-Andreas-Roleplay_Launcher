@@ -2,65 +2,62 @@
   <a href="https://sarp.es/" target="_blank">
     <img style="width: 200px;" src="https://i.imgur.com/EFK15nk.png" alt="San Andreas Roleplay"/>
   </a>
+  <h1>San Andreas Roleplay - Launcher</h1>
+  <p>Launcher optimizado para la comunidad de SA:MP de San Andreas Roleplay.</p>
 </div>
 
 ![Discord Shield](https://discord.com/api/guilds/1118327104908570654/widget.png?style=shield)
 [![License: MIT](https://img.shields.io/badge/License-MIT%20License-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Launcher oficial del servidor SAMP de [San Andreas Roleplay](https://sarp.es). Verifica la instalación de GTA SA, descarga `samp.exe` y los archivos de cache desde el CDN, y lanza el juego en el servidor oficial.
+## Descripción
 
-## Para jugadores
+Este es un proyecto de launcher moderno desarrollado en **Electron + Vue 3** para mejorar la experiencia de conexión y gestión de mods en el servidor de [San Andreas Roleplay](https://sarp.es). 
 
-Descargá la última versión desde [Releases](https://github.com/San-Andreas-Roleplay-ES/San-Andreas-Roleplay_Launcher/releases/latest). A partir de la primera instalación, el launcher se actualiza solo cuando hay una nueva versión disponible.
+> [!NOTE]
+> Este repositorio contiene una versión mejorada y en desarrollo constante. No es el código base del launcher original, sino una contribución activa para modernizar sus funciones y estética.
 
-## Para desarrolladores
+## Características
+
+- 🏎️ **Mod Manager:** Catálogo de mods con instalación automática de CLEO, plugins ASI y ModLoader.
+- 🔥 **Anticheat Integrado:** Escaneo de integridad para asegurar un juego limpio.
+- 📡 **Server Status:** Información en tiempo real del estado del servidor.
+- 🔄 **Auto-Updates:** Sistema de actualización automática integrado mediante GitHub Releases.
+- 💎 **UI Premium:** Interfaz oscura, moderna y optimizada.
+
+## Para Desarrolladores
+
+Si deseas contribuir al desarrollo o probarlo localmente:
 
 ```bash
+# Instalar dependencias
 yarn install
-yarn dev      # Vite + Electron en modo dev
-yarn polish   # format + lint + typecheck
+
+# Ejecutar en modo desarrollo (Vite + Electron)
+yarn dev
+
+# Formatear y verificar calidad de código
+yarn polish
 ```
 
-Documentación técnica completa (stack, estructura, convenciones, decisiones de producto) en [CLAUDE.md](CLAUDE.md).
+## Sistema de Actualización
 
-## Release
+Este repositorio está configurado para distribuir actualizaciones mediante **GitHub Releases** usando `electron-updater`. 
 
-Las actualizaciones se distribuyen vía `electron-updater` con `provider: generic` apuntando a `https://sarp-public.b-cdn.net/launcher/`. El launcher revisa al arrancar, descarga delta en background y aplica al cerrar.
+> [!IMPORTANT]
+> Es importante notar que en la **versión original/oficial** del launcher, las actualizaciones no se distribuyen por GitHub, sino a través de un **CDN (BunnyCDN)**. Esta implementación en GitHub es específica para esta rama de desarrollo y contribución.
 
-### Pasos para publicar una nueva versión
-
-1. **Bump de versión** en [package.json](package.json) (`"version": "1.0.1"`). Es la única fuente de verdad — el footer del shell la lee de `app.getVersion()` y `electron-builder` la usa para `latest.yml`.
-
-2. **Build local**:
-
+### Pasos para publicar una versión en este repositorio:
+1. Sube la versión en `package.json` (ej: `"1.0.1"`).
+2. Asegúrate de tener tu un `GH_TOKEN` válido en el `.env`.
+3. Ejecuta el comando de publicación:
    ```bash
-   yarn build
+   yarn electron-builder --publish always
    ```
-
-   Produce en `release/<version>/`:
-   - `SARP-SAMP-Launcher-Setup-<version>.exe` — el instalador NSIS one-click.
-   - `SARP-SAMP-Launcher-Setup-<version>.exe.blockmap` — habilita delta updates.
-   - `latest.yml` — manifest que electron-updater compara contra la versión instalada.
-
-3. **Subir los 3 archivos** a Bunny CDN bajo el path `/launcher/`. Pueden subirse por el panel web o por la Storage API (`PUT https://storage.bunnycdn.com/<storage-zone>/launcher/<file>` con header `AccessKey: <storage-zone-password>`).
-
-   > ⚠️ Subir siempre los **3** archivos. Sin `.blockmap`, electron-updater igual aplica la actualización pero descarga el `.exe` completo (~80 MB) en lugar del delta. **No borrar los blockmaps de versiones anteriores** — se necesitan para diffs entre versiones consecutivas.
-
-4. **Verificar accesibilidad**:
-
-   ```bash
-   curl -I https://sarp-public.b-cdn.net/launcher/latest.yml
-   curl -I https://sarp-public.b-cdn.net/launcher/SARP-SAMP-Launcher-Setup-<version>.exe.blockmap
-   ```
-
-   Ambos deben responder `200 OK`. Si Bunny sirve `latest.yml` con `Content-Type: application/octet-stream`, configurar un override en Bunny para que sea `text/yaml` (electron-updater es laxo, pero es buena higiene).
-
-5. **Probar el update** desde una versión anterior instalada: abrir el launcher con la `<version-1>` instalada, esperar unos segundos, debería aparecer el banner _"Descargando actualización"_ → _"Reiniciar para aplicar"_. Logs en `%APPDATA%\san-andreas-roleplay-launcher\logs\main.log`.
-
-### Code signing
-
-El `.exe` no está firmado. Los usuarios verán el SmartScreen _"Windows protected your PC"_ → _"More info"_ → _"Run anyway"_ la primera vez. En updates posteriores aplicados por NSIS no se vuelve a mostrar.
+4. Los archivos (`.exe`, `.blockmap`, `latest.yml`) se subirán automáticamente a los Releases de este repositorio.
 
 ## Licencia
 
-MIT — ver [LICENSE](LICENSE).
+Este proyecto está bajo la licencia MIT — ver el archivo [LICENSE](LICENSE) para más detalles.
+
+---
+*Contribución para la comunidad de San Andreas Roleplay.*
