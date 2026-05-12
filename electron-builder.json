@@ -14,9 +14,10 @@
     }
   ],
   "publish": {
-    "provider": "generic",
-    "url": "https://sarp-public.b-cdn.net/launcher/",
-    "channel": "latest"
+    "provider": "github",
+    "owner": "dygerdo",
+    "repo": "San-Andreas-Roleplay_Launcher",
+    "private": true
   },
   "win": {
     "target": [

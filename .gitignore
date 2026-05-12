@@ -57,3 +57,6 @@ coverage
 .temp
 .tmp
 .agents
+temp_ts_check.js
+tsc_help.txt
+typescript-errors.txt
