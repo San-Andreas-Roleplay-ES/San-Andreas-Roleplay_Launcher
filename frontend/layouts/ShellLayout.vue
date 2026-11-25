@@ -56,17 +56,21 @@ function openSite() {
     <slot v-if="$slots.belowHeader" name="belowHeader" />
 
     <main
-      class="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-6 md:px-10 md:py-8"
+      class="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-8 md:px-10 md:py-10"
     >
       <Transition name="shell-fade" mode="out-in">
         <div
           v-if="loading && $slots.skeleton"
           key="skeleton"
-          class="m-auto flex w-full max-w-2xl flex-col items-center"
+          class="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center"
         >
           <slot name="skeleton" />
         </div>
-        <div v-else key="content" class="m-auto flex w-full max-w-2xl flex-col items-center">
+        <div
+          v-else
+          key="content"
+          class="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center pb-4"
+        >
           <slot />
         </div>
       </Transition>

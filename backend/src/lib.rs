@@ -124,6 +124,7 @@ pub fn run() {
             commands::launch_game,
             commands::get_game_status,
             commands::ping_server,
+            commands::fetch_scoreboard,
             commands::fetch_manifest,
             commands::fetch_global_metrics,
             commands::fetch_events,

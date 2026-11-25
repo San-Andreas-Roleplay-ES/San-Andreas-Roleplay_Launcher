@@ -24,6 +24,32 @@ body {
   overflow-x: hidden;
 }
 
+/* Keep scrollbars quiet and narrow so they fit the launcher's dark UI. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
 /* Lets `flex-1` children shrink past their content's intrinsic width. Without
    this, long labels inside flex rows force the parent wider than the window
    and break the responsive layout. */

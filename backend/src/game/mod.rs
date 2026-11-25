@@ -2,6 +2,7 @@
 //! pickers, install detection, health check, mod detection, launching, the
 //! folder shortcut.
 
+pub mod anticheat;
 pub mod detect;
 pub mod health;
 pub mod launcher;

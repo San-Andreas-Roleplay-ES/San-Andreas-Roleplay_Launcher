@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue"
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
 import ShellLayout from "@/layouts/ShellLayout.vue"
 import HealthCheckList from "@/components/home/HealthCheckList.vue"
 import PlayCard from "@/components/home/PlayCard.vue"
@@ -7,6 +7,7 @@ import EventsCarousel from "@/components/home/EventsCarousel.vue"
 import EventModal from "@/components/home/EventModal.vue"
 import LogoMark from "@/components/brand/LogoMark.vue"
 import ServerStatus from "@/components/home/ServerStatus.vue"
+import ScoreboardPanel from "@/components/home/ScoreboardPanel.vue"
 import { useHealthCheckStore } from "@/stores/healthCheck"
 import { useEvents } from "@/composables/useEvents"
 import { useRotatingTagline } from "@/composables/useRotatingTagline"
@@ -15,11 +16,13 @@ import { launcher } from "@/api/launcher"
 import type { ServerEvent } from "@/api/public"
 
 const health = useHealthCheckStore()
-const { events, loading: eventsLoading, load: loadEvents } = useEvents()
+const { events, loading: eventsLoading, error: eventsError, load: loadEvents } = useEvents()
 const { tagline } = useRotatingTagline()
 const { phase, launchMessage, launch } = useGameStatus()
 const blockHint = ref<string | null>(null)
+let blockHintTimer: ReturnType<typeof setTimeout> | null = null
 const selectedIndex = ref<number | null>(null)
+const homeSection = ref<"installation" | "scoreboard">("installation")
 
 const host = import.meta.env.VITE_GAME_SERVER_IP
 const port = Number(import.meta.env.VITE_GAME_SERVER_PORT)
@@ -81,13 +84,25 @@ function nextEvent() {
   }
 }
 
+function showHint(message: string) {
+  blockHint.value = message
+  if (blockHintTimer) clearTimeout(blockHintTimer)
+  blockHintTimer = setTimeout(() => {
+    blockHint.value = null
+    blockHintTimer = null
+  }, 3500)
+}
+
 async function play() {
   if (phase.value !== "idle") return
   if (!health.allOk) {
     showBlockHint()
     return
   }
-  await launch(host, port)
+  const result = await launch(host, port)
+  if (result && !result.ok) {
+    showHint(result.error ?? "No se pudo iniciar el juego")
+  }
 }
 
 function openSignup() {
@@ -101,21 +116,23 @@ function showBlockHint() {
       (e.id === "gta" && e.state !== "ok" && e.state !== "checking") ||
       (e.id === "samp" && e.state === "error"),
   )
-  blockHint.value =
+  showHint(
     failing?.detail ??
-    (health.cacheInstalling
-      ? "Espera a que termine de actualizarse el caché, o pulsa «Omitir» para jugar ya."
-      : "Faltan archivos del juego — verifica tu instalación.")
-  setTimeout(() => {
-    blockHint.value = null
-  }, 3500)
+      (health.cacheInstalling
+        ? "Espera a que termine de actualizarse el caché, o pulsa «Omitir» para jugar ya."
+        : "Faltan archivos del juego — verifica tu instalación."),
+  )
 }
+
+onUnmounted(() => {
+  if (blockHintTimer) clearTimeout(blockHintTimer)
+})
 </script>
 
 <template>
   <ShellLayout :loading="!ready">
     <template #skeleton>
-      <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6">
+      <div class="flex w-full max-w-2xl flex-col items-center gap-5 md:gap-8">
         <header class="flex items-center gap-5">
           <LogoMark size="md" />
           <!-- Heights mirror the real header (h1 ~32 px, ServerStatus ~16 px,
@@ -164,7 +181,7 @@ function showBlockHint() {
       </div>
     </template>
 
-    <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6">
+    <div class="flex w-full max-w-2xl flex-col items-center gap-5 md:gap-8">
       <header class="flex items-center gap-5">
         <LogoMark size="md" />
         <div class="flex min-w-0 flex-col gap-1">
@@ -188,22 +205,64 @@ function showBlockHint() {
             </Transition>
           </div>
         </div>
+        <button
+          type="button"
+          disabled
+          class="flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/35"
+          title="No disponible"
+        >
+          <i class="pi pi-box text-xs" />
+          Mods
+        </button>
       </header>
 
-      <div class="grid w-full grid-cols-[1fr_auto] items-stretch gap-3">
-        <HealthCheckList />
-        <PlayCard
-          class="w-44"
-          :phase="phase"
-          :disabled="!health.allOk"
-          :launch-message="launchMessage"
-          :block-hint="blockHint"
-          @play="play"
-          @signup="openSignup"
-        />
-      </div>
+      <section class="flex w-full flex-col items-center gap-5 md:gap-6">
+        <nav role="tablist" class="flex w-full gap-2" aria-label="Contenido de inicio">
+          <button
+            v-for="tab in [
+              { id: 'installation', label: 'Instalación' },
+              { id: 'scoreboard', label: 'Scoreboard' },
+            ]"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            :aria-selected="homeSection === tab.id"
+            class="rounded-full border px-3 py-1.5 text-[11px] transition-colors"
+            :class="
+              homeSection === tab.id
+                ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+                : 'border-white/10 text-white/45 hover:text-white/75'
+            "
+            @click="homeSection = tab.id as 'installation' | 'scoreboard'"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
 
-      <EventsCarousel :events="events" :loading="eventsLoading" @open="openEvent" />
+        <div
+          v-if="homeSection === 'installation'"
+          class="grid w-full grid-cols-[1fr_auto] items-stretch gap-3"
+        >
+          <HealthCheckList />
+          <PlayCard
+            class="w-44"
+            :phase="phase"
+            :disabled="!health.allOk"
+            :launch-message="launchMessage"
+            :block-hint="blockHint"
+            @play="play"
+            @signup="openSignup"
+          />
+        </div>
+        <ScoreboardPanel v-else :host="host" :port="port" />
+      </section>
+
+      <EventsCarousel
+        :events="events"
+        :loading="eventsLoading"
+        :error="eventsError"
+        @open="openEvent"
+      />
     </div>
 
     <EventModal

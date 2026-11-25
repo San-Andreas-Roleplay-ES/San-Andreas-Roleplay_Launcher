@@ -15,6 +15,10 @@ backend/gen
 .env.*.local
 *.local
 
+# Local updater signing material — never commit private keys.
+local-signing.key
+local-signing.key.pub
+
 # Editor / IDE
 .vscode/*
 !.vscode/extensions.json

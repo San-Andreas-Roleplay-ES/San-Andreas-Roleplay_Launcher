@@ -1,4 +1,4 @@
-//! Payloads returned to the frontend (`ServerInfo` / `PingResult`).
+//! Payloads returned to the frontend for server status and the scoreboard.
 
 use serde::Serialize;
 
@@ -11,6 +11,24 @@ pub struct ServerInfo {
     pub gamemode: String,
     pub language: String,
     pub has_password: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoreboardEntry {
+    pub id: u8,
+    pub name: String,
+    pub score: u32,
+    pub ping: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoreboardSnapshot {
+    pub players: Vec<ScoreboardEntry>,
+    pub total_players: u16,
+    pub max_players: u16,
+    pub queried_at: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

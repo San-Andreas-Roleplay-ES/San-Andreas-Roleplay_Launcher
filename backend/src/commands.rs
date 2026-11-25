@@ -17,7 +17,7 @@ use crate::install::gta::{self, GtaInstallResult};
 use crate::install::samp::{self, InstallResult};
 use crate::install::verify::{self, SampVerificationResult};
 use crate::net::manifest::{self, LauncherManifest};
-use crate::net::query::{self, PingResult};
+use crate::net::query::{self, PingResult, ScoreboardSnapshot};
 use crate::Ctx;
 
 // ---- game ----
@@ -144,6 +144,11 @@ pub async fn ping_server(ip: Option<Value>, port: Option<Value>) -> PingResult {
         (Some(ip), Some(port)) => query::ping(ip, port).await,
         _ => PingResult::failed("invalid args"),
     }
+}
+
+#[tauri::command]
+pub async fn fetch_scoreboard(ip: String, port: f64) -> Result<ScoreboardSnapshot, String> {
+    query::scoreboard(&ip, port).await
 }
 
 #[tauri::command]
