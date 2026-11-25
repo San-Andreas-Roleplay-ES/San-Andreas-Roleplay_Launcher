@@ -1,0 +1,84 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "San Andreas Roleplay - SA-MP Launcher",
+  "mainBinaryName": "sarp-launcher",
+  "version": "../package.json",
+  "identifier": "es.sarp.launcher",
+  "build": {
+    "beforeDevCommand": "yarn dev:web",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "yarn build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "San Andreas Roleplay - SA:MP Launcher",
+        "width": 1100,
+        "height": 980,
+        "minWidth": 880,
+        "minHeight": 720,
+        "resizable": true,
+        "maximizable": true,
+        "fullscreen": false,
+        "decorations": false,
+        "visible": false,
+        "center": true,
+        "backgroundColor": "#09090b"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: https:",
+        "media-src": "'self'",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'",
+        "frame-src": "'none'"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "San Andreas Roleplay",
+    "category": "Game",
+    "shortDescription": "Launcher oficial de San Andreas Roleplay",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Spanish", "English"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://sarp-public.b-cdn.net/launcher/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4NjY0NjAwNUFFRDk1OUYKUldTZmxlMWFBRVptbUlxUUthYlJBTWlCR2FmKzJjdWY2ZU1SRC9yR1lxRlVxbUEva0lFMmxSbDAK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

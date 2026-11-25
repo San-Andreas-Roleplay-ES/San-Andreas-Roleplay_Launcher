@@ -10,8 +10,8 @@ export default [
     ignores: [
       "node_modules/**",
       "dist/**",
-      "dist-electron/**",
-      "release/**",
+      "backend/target/**",
+      "backend/gen/**",
       "out/**",
       "build/**",
       "public/**",

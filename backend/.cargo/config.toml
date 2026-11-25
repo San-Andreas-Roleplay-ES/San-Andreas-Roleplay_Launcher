@@ -1,0 +1,4 @@
+# The repo lives inside OneDrive; keep the (large, churny) build output out of
+# the synced folder.
+[build]
+target-dir = "C:/tmp/sarp-target"

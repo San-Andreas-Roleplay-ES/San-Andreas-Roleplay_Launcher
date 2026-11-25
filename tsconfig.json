@@ -16,10 +16,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["frontend/*"]
     },
-    "types": ["node"]
+    "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "electron/**/*.ts"],
+  "include": ["frontend/**/*.ts", "frontend/**/*.d.ts", "frontend/**/*.tsx", "frontend/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

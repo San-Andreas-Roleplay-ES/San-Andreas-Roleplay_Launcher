@@ -5,9 +5,9 @@ node_modules
 
 # Build output
 dist
-dist-electron
-release
 out
+backend/target
+backend/gen
 
 # Env
 .env
@@ -43,9 +43,6 @@ lerna-debug.log*
 
 # TypeScript
 *.tsbuildinfo
-
-# Electron-builder
-electron-builder.env
 
 # Coverage / tests
 coverage

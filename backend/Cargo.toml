@@ -1,0 +1,64 @@
+[package]
+name = "sarp-launcher"
+# The real version lives in ../package.json (tauri.conf.json points at it).
+# This one is never shown to users.
+version = "0.0.0"
+description = "San Andreas Roleplay - SA:MP Launcher"
+authors = ["San Andreas Roleplay"]
+license = "MIT"
+edition = "2021"
+publish = false
+
+[lib]
+name = "sarp_launcher_lib"
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.7", features = [] }
+tauri-plugin-updater = "2.14.1"
+tauri-plugin-dialog = "2.8.4"
+tauri-plugin-opener = "2.7.3"
+tauri-plugin-log = "2.10.2"
+# Registered first: one launcher process at a time.
+tauri-plugin-single-instance = "2.5.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
+futures-util = "0.3"
+# Same reqwest/rustls stack the updater plugin already pulls in: rustls with the
+# OS certificate store (platform verifier) and the ring crypto provider.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "stream", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
+# Plain IEEE CRC-32: what SA-MP uses to name cached models (0x<CRC>.dff).
+crc32fast = "1.5"
+hex = "0.4"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
+url = "2"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+
+[target.'cfg(windows)'.dependencies]
+# Pinned to the versions wry/tauri use so the COM interface types line up.
+webview2-com = "0.39.1"
+windows = { version = "0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }
+# Read-only registry access for the GTA detection (already pulled in by the
+# Tauri plugins).
+windows-registry = "0.6.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

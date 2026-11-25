@@ -1,14 +1,12 @@
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig } from "vite"
 import vue from "@vitejs/plugin-vue"
-import electron from "vite-plugin-electron/simple"
-import renderer from "vite-plugin-electron-renderer"
 import { execSync } from "node:child_process"
 import { resolve } from "node:path"
 
-// Resolve the short git commit hash at build time so the renderer footer can
-// show e.g. "v1.0.0 (a3f2b1c)". Falls back to "unknown" outside a git checkout
-// (CI without history, sources extracted from a tarball, etc.) so the build
-// never breaks because of this.
+// Resolve the short git commit hash at build time so the footer can show e.g.
+// "v1.0.0 (a3f2b1c)". Falls back to "unknown" outside a git checkout (CI
+// without history, sources extracted from a tarball, etc.) so the build never
+// breaks because of this.
 function resolveGitCommit(): string {
   try {
     return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
@@ -19,56 +17,34 @@ function resolveGitCommit(): string {
   }
 }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "")
-  if (env.DEV_GTA_PATH) process.env.DEV_GTA_PATH = env.DEV_GTA_PATH
+// Set by the Tauri CLI when it drives Vite through `tauri dev` / `tauri build`.
+const tauriDebug = Boolean(process.env.TAURI_ENV_DEBUG)
 
-  const gitCommit = resolveGitCommit()
-
-  // Vite only inlines `VITE_*` env vars into the renderer bundle. The Electron
-  // main process is plain Node, so `process.env.VITE_FOO` is undefined at
-  // runtime in the packaged build. We `define` the vars we read from main so
-  // they get baked into dist-electron at build time.
-  const mainEnvDefines = {
-    "process.env.VITE_CDN_URL": JSON.stringify(env.VITE_CDN_URL ?? ""),
-    "process.env.VITE_GAME_CACHE_FOLDER": JSON.stringify(env.VITE_GAME_CACHE_FOLDER ?? ""),
-  }
-
-  return {
-    resolve: {
-      alias: {
-        "@": resolve(__dirname, "src"),
-      },
+export default defineConfig({
+  plugins: [vue()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "frontend"),
     },
-    define: {
-      __GIT_COMMIT__: JSON.stringify(gitCommit),
+  },
+  define: {
+    __GIT_COMMIT__: JSON.stringify(resolveGitCommit()),
+  },
+  // Keep the Rust compiler output visible: Vite would otherwise wipe the terminal.
+  clearScreen: false,
+  server: {
+    // Tauri loads the dev server from a fixed URL (`devUrl` in tauri.conf.json).
+    port: 5173,
+    strictPort: true,
+    watch: {
+      ignored: ["**/backend/**"],
     },
-    plugins: [
-      vue(),
-      electron({
-        main: {
-          entry: "electron/main.ts",
-          vite: {
-            define: mainEnvDefines,
-            build: {
-              outDir: "dist-electron",
-              rollupOptions: {
-                external: ["electron-store", "electron-updater", "electron-log", "extract-zip"],
-              },
-            },
-          },
-        },
-        preload: {
-          input: "electron/preload.ts",
-          vite: {
-            define: mainEnvDefines,
-            build: {
-              outDir: "dist-electron",
-            },
-          },
-        },
-      }),
-      renderer(),
-    ],
-  }
+  },
+  envPrefix: "VITE_",
+  build: {
+    // WebView2 is an evergreen Chromium.
+    target: "chrome105",
+    minify: tauriDebug ? false : "esbuild",
+    sourcemap: tauriDebug,
+  },
 })
