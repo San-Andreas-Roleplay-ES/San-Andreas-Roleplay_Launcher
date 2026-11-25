@@ -169,6 +169,9 @@ pub fn launch(app: &AppHandle, host: &str, port: u16) -> GameLaunchResult {
     if !samp.exists() {
         return GameLaunchResult::error("samp.exe no está instalado");
     }
+    if let Some(reason) = crate::game::anticheat::check(&dir) {
+        return GameLaunchResult::error(reason);
+    }
 
     let spawned = Command::new(&samp)
         .arg(&server)

@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, ref } from "vue"
 import { launcher } from "@/api/launcher"
 import type { Unsubscribe } from "@/api/launcher"
+import type { GameLaunchResult } from "@/types/game"
 
 export type GamePhase = "idle" | "launching" | "in-game"
 
@@ -46,16 +47,25 @@ export function useGameStatus() {
     }, LAUNCH_TIMEOUT_MS)
   }
 
-  async function launch(host: string, port: number) {
-    if (phase.value !== "idle") return
+  async function launch(host: string, port: number): Promise<GameLaunchResult | null> {
+    if (phase.value !== "idle") return null
     phase.value = "launching"
     scheduleLaunchMessages()
 
-    const result = await launcher.launchGame({ host, port })
+    let result: GameLaunchResult
+    try {
+      result = await launcher.launchGame({ host, port })
+    } catch (err) {
+      result = {
+        ok: false,
+        error: typeof err === "string" ? err : "No se pudo iniciar el juego",
+      }
+    }
     if (!result.ok) {
       phase.value = "idle"
       clearTimers()
     }
+    return result
   }
 
   onMounted(async () => {

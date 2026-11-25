@@ -1,6 +1,5 @@
-//! SA-MP query packet: `"SAMP"` + IPv4 octets + port (LE) + opcode.
+//! SA-MP query packet: `SAMP`, IPv4 octets, little-endian port, and opcode.
 
-/// Info (`i`), players (`p`), detailed players (`d`), rules (`r`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Opcode {
@@ -14,7 +13,7 @@ impl Opcode {
     fn byte(self) -> u8 {
         match self {
             Opcode::Info => b'i',
-            Opcode::Players => b'p',
+            Opcode::Players => b'c',
             Opcode::Detailed => b'd',
             Opcode::Rules => b'r',
         }
@@ -23,23 +22,21 @@ impl Opcode {
 
 pub const HEADER_LEN: usize = 11;
 
-/// Dotted-quad IPv4 (leading zeros allowed, like the old regex check).
+/// Parses a dotted-quad IPv4 address, accepting leading zeroes.
 pub fn parse_ipv4(ip: &str) -> Option<[u8; 4]> {
-    let parts: Vec<&str> = ip.split('.').collect();
-    if parts.len() != 4 {
-        return None;
-    }
     let mut octets = [0u8; 4];
-    for (octet, part) in octets.iter_mut().zip(parts) {
+    let mut parts = ip.split('.');
+    for octet in &mut octets {
+        let part = parts.next()?;
         if part.is_empty() || part.len() > 3 || !part.bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
-        *octet = part.parse::<u16>().ok().filter(|n| *n <= 255)? as u8;
+        *octet = part.parse().ok()?;
     }
-    Some(octets)
+    parts.next().is_none().then_some(octets)
 }
 
-/// Integer in 1–65535. Takes `f64` because that is what JS sends.
+/// Parses an integer port in the range 1–65535.
 pub fn parse_port(port: f64) -> Option<u16> {
     (port.fract() == 0.0 && (1.0..=65535.0).contains(&port)).then_some(port as u16)
 }
@@ -64,6 +61,8 @@ mod tests {
             build(octets, 7777, Opcode::Info),
             [b'S', b'A', b'M', b'P', 135, 148, 128, 72, 0x61, 0x1E, b'i']
         );
+        assert_eq!(Opcode::Players.byte(), b'c');
+        assert_eq!(Opcode::Detailed.byte(), b'd');
         assert_eq!(
             build([1, 2, 3, 4], 0x1234, Opcode::Rules)[8..],
             [0x34, 0x12, b'r']

@@ -5,6 +5,7 @@ import type { ServerEvent } from "@/api/public"
 defineProps<{
   events: ServerEvent[]
   loading: boolean
+  error: string | null
 }>()
 
 defineEmits<{
@@ -13,7 +14,7 @@ defineEmits<{
 </script>
 
 <template>
-  <section v-if="loading || events.length > 0" class="w-full">
+  <section class="w-full">
     <div v-if="loading" class="flex justify-center gap-3 overflow-hidden">
       <div
         v-for="i in 5"
@@ -24,13 +25,26 @@ defineEmits<{
     </div>
 
     <div v-else class="events-scroll overflow-x-auto pb-2">
-      <div class="mx-auto flex w-fit snap-x snap-mandatory gap-3">
+      <div v-if="events.length > 0" class="mx-auto flex w-fit snap-x snap-mandatory gap-3">
         <EventCard
           v-for="event in events"
           :key="event.id"
           :event="event"
           @open="(e) => $emit('open', e)"
         />
+      </div>
+      <div
+        v-else
+        class="flex min-h-36 w-full flex-col items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-6 text-center"
+        aria-live="polite"
+      >
+        <i
+          class="pi mb-2 text-lg"
+          :class="error ? 'pi-exclamation-circle text-amber-200/60' : 'pi-calendar text-white/30'"
+        />
+        <p class="text-xs text-white/50">
+          {{ error ?? "No hay eventos publicados por ahora." }}
+        </p>
       </div>
     </div>
   </section>

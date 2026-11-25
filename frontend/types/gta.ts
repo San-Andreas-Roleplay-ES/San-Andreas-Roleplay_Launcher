@@ -22,7 +22,7 @@ export interface GtaInstallResult {
   cancelled?: boolean
 }
 
-export type ModId = "modloader" | "asi-loader"
+export type ModId = "cleo" | "modloader" | "asi-loader"
 
 export interface DetectedMod {
   id: ModId

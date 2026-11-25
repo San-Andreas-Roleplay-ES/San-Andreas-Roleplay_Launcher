@@ -8,6 +8,7 @@ use tokio::net::UdpSocket;
 use super::packet::{build, Opcode, HEADER_LEN};
 
 const MAX_RESPONSE_BYTES: usize = 4096;
+pub const MAX_PLAYERS_RESPONSE_BYTES: usize = 16_384;
 
 /// Sends one query and returns the response payload (header stripped).
 pub async fn query(
@@ -16,11 +17,21 @@ pub async fn query(
     opcode: Opcode,
     timeout: Duration,
 ) -> Result<Vec<u8>, String> {
+    query_with_limit(octets, port, opcode, timeout, MAX_RESPONSE_BYTES).await
+}
+
+pub async fn query_with_limit(
+    octets: [u8; 4],
+    port: u16,
+    opcode: Opcode,
+    timeout: Duration,
+    max_response_bytes: usize,
+) -> Result<Vec<u8>, String> {
     let exchange = async {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
             .await
             .map_err(|e| e.to_string())?;
-        // Connected socket: datagrams from anyone but the server are dropped.
+        // Connected sockets discard datagrams from hosts other than the server.
         socket
             .connect(SocketAddrV4::new(Ipv4Addr::from(octets), port))
             .await
@@ -29,8 +40,8 @@ pub async fn query(
             .send(&build(octets, port, opcode))
             .await
             .map_err(|e| e.to_string())?;
-        // One extra byte so an oversized reply is detectable.
-        let mut buf = vec![0u8; MAX_RESPONSE_BYTES + 1];
+        // One extra byte lets us detect a reply over the configured limit.
+        let mut buf = vec![0u8; max_response_bytes + 1];
         let n = socket.recv(&mut buf).await.map_err(|e| e.to_string())?;
         buf.truncate(n);
         Ok::<_, String>(buf)
@@ -38,7 +49,7 @@ pub async fn query(
     let msg = tokio::time::timeout(timeout, exchange)
         .await
         .map_err(|_| "timeout".to_string())??;
-    if msg.len() > MAX_RESPONSE_BYTES {
+    if msg.len() > max_response_bytes {
         return Err("response too large".into());
     }
     if msg.len() < HEADER_LEN {

@@ -1,26 +1,24 @@
-//! SA-MP server query (UDP) used for the server status card.
+//! SA-MP server queries over UDP for status and the scoreboard.
 
 mod client;
 mod packet;
 mod parser;
 mod types;
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub use types::PingResult;
+pub use types::{PingResult, ScoreboardSnapshot};
 
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
 
-/// `ip:port` the way samp.exe takes it, when both pass the same checks as
-/// [`ping`]. Rebuilt from the parsed numbers, so nothing else rides along.
+/// Rebuilds a validated `ip:port` endpoint for launching `samp.exe`.
 pub fn endpoint(ip: &str, port: f64) -> Option<String> {
     let [a, b, c, d] = packet::parse_ipv4(ip)?;
     let port = packet::parse_port(port)?;
     Some(format!("{a}.{b}.{c}.{d}:{port}"))
 }
 
-/// Pings `ip:port` with an info query. `ip` must be a dotted IPv4 and `port`
-/// an integer 1–65535 (validated here: they come straight from JS).
+/// Pings an IPv4 endpoint with an info query.
 pub async fn ping(ip: &str, port: f64) -> PingResult {
     let (Some(octets), Some(port)) = (packet::parse_ipv4(ip), packet::parse_port(port)) else {
         return PingResult::failed("invalid host");
@@ -40,17 +38,45 @@ pub async fn ping(ip: &str, port: f64) -> PingResult {
     }
 }
 
+pub async fn scoreboard(ip: &str, port: f64) -> Result<ScoreboardSnapshot, String> {
+    let (Some(octets), Some(port)) = (packet::parse_ipv4(ip), packet::parse_port(port)) else {
+        return Err("invalid host".into());
+    };
+    let (info, detailed) = tokio::join!(
+        client::query(octets, port, packet::Opcode::Info, QUERY_TIMEOUT),
+        client::query_with_limit(
+            octets,
+            port,
+            packet::Opcode::Detailed,
+            QUERY_TIMEOUT,
+            client::MAX_PLAYERS_RESPONSE_BYTES,
+        ),
+    );
+    let info = parser::parse_info(&info?)?;
+    let players = parser::parse_players(&detailed?)?;
+    let queried_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    Ok(ScoreboardSnapshot {
+        players,
+        total_players: info.players,
+        max_players: info.max_players,
+        queried_at,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn builds_the_launch_endpoint() {
+        // Normalise the address from the validated octets.
         assert_eq!(
             endpoint("135.148.128.72", 7777.0).as_deref(),
             Some("135.148.128.72:7777")
         );
-        // Normalised from the parsed octets.
         assert_eq!(
             endpoint("010.001.0.255", 1.0).as_deref(),
             Some("10.1.0.255:1")
@@ -112,12 +138,51 @@ mod tests {
 
     #[tokio::test]
     async fn times_out_when_nobody_answers() {
-        // Bound but silent socket: the query must give up after the timeout.
+        // A bound but silent socket verifies the query timeout without networking.
         let silent = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let port = silent.local_addr().unwrap().port();
         let result = ping("127.0.0.1", f64::from(port)).await;
         assert_eq!(result, PingResult::failed("timeout"));
         drop(silent);
+    }
+
+    #[tokio::test]
+    async fn reads_the_scoreboard_from_a_local_fake_server() {
+        let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 64];
+            for _ in 0..2 {
+                let (n, from) = server.recv_from(&mut buf).await.unwrap();
+                let request = buf[..n].to_vec();
+                let mut reply = request.clone();
+                match request[10] {
+                    b'i' => {
+                        reply.extend(parser::tests::payload(0, 2, 50, &[b"Test", b"SARP", b"es"]))
+                    }
+                    b'd' => reply.extend(parser::tests::players_payload(&[
+                        (0, b"Maradona", 42, 35),
+                        (1, b"Messi", 30, 60),
+                    ])),
+                    other => panic!("unexpected opcode {other}"),
+                }
+                server.send_to(&reply, from).await.unwrap();
+            }
+        });
+        let snapshot = scoreboard("127.0.0.1", f64::from(port)).await.unwrap();
+        assert_eq!((snapshot.total_players, snapshot.max_players), (2, 50));
+        assert_eq!(snapshot.players.len(), 2);
+        assert_eq!(snapshot.players[0].name, "Maradona");
+        assert_eq!(snapshot.players[1].ping, 60);
+        assert!(snapshot.queried_at > 0);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_scoreboard_hosts() {
+        assert_eq!(
+            scoreboard("not-an-ip", 7777.0).await.unwrap_err(),
+            "invalid host"
+        );
     }
 
     #[tokio::test]

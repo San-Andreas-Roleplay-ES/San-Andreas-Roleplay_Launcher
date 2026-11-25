@@ -15,6 +15,7 @@ import type { HealthCheckPayload } from "@/types/health"
 import type { LauncherManifest } from "@/types/manifest"
 import type { GlobalMetrics, RawServerEvent } from "@/types/public"
 import type { InstallProgress, InstallResult, SampVerificationResult } from "@/types/samp"
+import type { ScoreboardSnapshot } from "@/types/scoreboard"
 import type { PingResult } from "@/types/server"
 import type { UpdaterAvailable, UpdaterDownloaded, UpdaterProgress } from "@/types/updater"
 import type { WindowState } from "@/types/window"
@@ -68,6 +69,9 @@ export const launcher = {
   fetchEvents: () => invoke<RawServerEvent[]>("fetch_events"),
 
   pingServer: (ip: string, port: number) => invoke<PingResult>("ping_server", { ip, port }),
+
+  fetchScoreboard: (ip: string, port: number) =>
+    invoke<ScoreboardSnapshot>("fetch_scoreboard", { ip, port }),
 
   /** Rejects with a string when the manifest cannot be fetched. */
   fetchManifest: (options: { force?: boolean } = {}) =>
