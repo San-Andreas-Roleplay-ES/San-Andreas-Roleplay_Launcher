@@ -61,7 +61,7 @@ Este repo incluye una colección de skills locales en [.agents/skills/](.agents/
 launcher/
 ├── frontend/                # Frontend Vue (corre dentro de WebView2)
 │   ├── api/                 # launcher.ts (bridge IPC tipado) + public.ts (métricas y eventos normalizados)
-│   ├── assets/              # Assets importados desde código (graffiti, sonidos)
+│   ├── assets/              # Assets importados desde código (capas del logo, graffiti, sonidos)
 │   ├── components/          # Componentes Vue por feature (brand/, dialog/, home/)
 │   ├── composables/         # useWindowState, useGameStatus, useServerPing, useUpdater, …
 │   ├── layouts/             # ShellLayout (title bar + banner de update + footer)
@@ -89,7 +89,6 @@ launcher/
 │   ├── Cargo.toml
 │   └── .cargo/config.toml   # target-dir → C:\tmp\sarp-target (fuera de OneDrive)
 ├── public/                  # Assets estáticos embebidos (NO van al CDN)
-│   ├── logo.png
 │   ├── logo-squared.png
 │   ├── favicon.ico
 │   └── background.png
@@ -246,14 +245,17 @@ Aplicadas en [frontend/style.css](frontend/style.css) y [frontend/utils/nativeFe
 
 ## Iconografía
 
-| Contexto                   | Archivo                                                                  |
-| -------------------------- | ------------------------------------------------------------------------ |
-| Ventana, taskbar y `.exe`  | `backend/icons/icon.ico` (listado en `bundle.icon` de `tauri.conf.json`) |
-| Instalador NSIS            | `backend/icons/icon.ico` (`bundle.windows.nsis.installerIcon`)           |
-| Favicon del frontend       | `public/favicon.ico`                                                     |
-| Logo en UI / boot skeleton | `public/logo.png`, `public/logo-squared.png`                             |
+| Contexto                  | Archivo                                                                  |
+| ------------------------- | ------------------------------------------------------------------------ |
+| Ventana, taskbar y `.exe` | `backend/icons/icon.ico` (listado en `bundle.icon` de `tauri.conf.json`) |
+| Instalador NSIS           | `backend/icons/icon.ico` (`bundle.windows.nsis.installerIcon`)           |
+| Favicon del frontend      | `public/favicon.ico`                                                     |
+| Logo animado en la UI     | `frontend/assets/logo/*.svg` (capas vectoriales) vía `LogoMark.vue`      |
+| Title bar / boot skeleton | `public/logo-squared.png`                                                |
 
 El `.ico` debe ser multi-resolución (16/24/32/48/64/128/256). `yarn tauri icon <png>` regenera el set de `backend/icons/` desde un PNG cuadrado grande.
+
+**Logo animado** ([LogoMark.vue](frontend/components/brand/LogoMark.vue)): el logo está rehecho en vectores por capas (SVG en un lienzo de 1024 unidades, escalables a cualquier tamaño), a partir de `LOGOCLASICOSA-RPHDconESTRELLAS.PSD` del repo del UCP: los 3 paneles son cuadriláteros completos (marco a inglete + skyline recortado), el avión, el "SA" y "Role Play" (la sombra gris es el mismo trazo desplazado) están trazados del PSD, y la estrella (una sola, usada 6 veces) es geometría ajustada a la del PSD (que era un bitmap ampliado, con bordes en sierra). El avión va 26 px más arriba que en la capa del PSD, como en el PNG final exportado. Se anima por CSS. La intro arma el logo base (paneles + "SA") y lo transforma en el final ("SA" sube, se escribe "Role Play", saltan las estrellas); después queda un brillo, un destello de estrellas y el avión cruzando el cielo. Props: `size` (`sm`/`md`/`lg`/`xl`), `intro` (`false` = logo terminado) y `replayOnHover` (al pasar el mouse el logo se encoge y repite la intro; no hace nada mientras la intro se está reproduciendo; lo usa el logo del header de la home). Dos logos montados con menos de 6 s de diferencia comparten la misma intro (el cambio skeleton → contenido no la reinicia). No respeta `prefers-reduced-motion` a propósito: Windows lo reporta cuando los "Efectos de animación" están apagados (ajuste de rendimiento habitual entre jugadores) y el logo nunca se animaría.
 
 ---
 

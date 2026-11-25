@@ -166,7 +166,7 @@ function showBlockHint() {
 
     <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6">
       <header class="flex items-center gap-5">
-        <LogoMark size="md" />
+        <LogoMark size="md" replay-on-hover />
         <div class="flex min-w-0 flex-col gap-1">
           <h1 class="text-2xl tracking-tight text-white">
             <span class="font-light text-white/85">Bienvenido a</span>
