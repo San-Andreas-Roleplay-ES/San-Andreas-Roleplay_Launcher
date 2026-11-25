@@ -1,4 +1,4 @@
-//! Installs the GTA: San Andreas rip into an (empty) folder.
+//! Installs the GTA San Andreas rip into an (empty) folder.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

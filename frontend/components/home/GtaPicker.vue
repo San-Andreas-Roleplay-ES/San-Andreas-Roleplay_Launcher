@@ -77,7 +77,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown))
             <i class="pi pi-folder-open mt-0.5 text-xl text-amber-300" aria-hidden="true" />
             <div class="min-w-0 flex-1">
               <h3 id="gta-picker-title" class="text-sm font-semibold text-white">
-                ¿Qué GTA: San Andreas quieres usar?
+                ¿Qué GTA San Andreas quieres usar?
               </h3>
               <p id="gta-picker-message" class="mt-1 text-sm leading-relaxed text-white/70">
                 Encontramos estas instalaciones en tu PC.

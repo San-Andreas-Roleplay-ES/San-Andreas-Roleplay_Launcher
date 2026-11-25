@@ -163,7 +163,7 @@ pub fn launch(app: &AppHandle, host: &str, port: u16) -> GameLaunchResult {
         return GameLaunchResult::error("Espera a que termine de actualizarse el caché.");
     }
     let Some(dir) = game_dir(&ctx.store) else {
-        return GameLaunchResult::error("Elige primero la carpeta de GTA: San Andreas");
+        return GameLaunchResult::error("Elige primero la carpeta de GTA San Andreas");
     };
     let samp = dir.join("samp.exe");
     if !samp.exists() {

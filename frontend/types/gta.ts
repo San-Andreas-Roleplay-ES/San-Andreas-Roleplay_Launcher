@@ -41,7 +41,7 @@ export type GtaSource =
   | "folder"
   | "dev"
 
-/** A valid GTA: San Andreas install found on this PC. */
+/** A valid GTA San Andreas install found on this PC. */
 export interface GtaCandidate {
   path: string
   source: GtaSource

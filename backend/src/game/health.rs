@@ -78,7 +78,7 @@ pub fn check_gta(stored: Option<&Path>) -> GtaHealth {
     let Some(dir) = stored else {
         return fail(
             true,
-            "Aún no has elegido la carpeta de GTA: San Andreas.".into(),
+            "Aún no has elegido la carpeta de GTA San Andreas.".into(),
         );
     };
     let missing = find_missing(Some(dir)).names();
@@ -107,7 +107,7 @@ pub fn check_samp(game_dir: Option<&Path>) -> SampHealth {
     let Some(dir) = game_dir else {
         return SampHealth {
             ok: false,
-            detail: Some("Elige primero la carpeta de GTA: San Andreas.".into()),
+            detail: Some("Elige primero la carpeta de GTA San Andreas.".into()),
         };
     };
     if !dir.join("samp.exe").exists() {
@@ -232,7 +232,7 @@ mod tests {
             check_gta(None),
             GtaHealth {
                 ok: false,
-                detail: Some("Aún no has elegido la carpeta de GTA: San Andreas.".into()),
+                detail: Some("Aún no has elegido la carpeta de GTA San Andreas.".into()),
                 missing_all: true,
                 path: None,
             }
@@ -275,7 +275,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
             check_samp(None).detail.as_deref(),
-            Some("Elige primero la carpeta de GTA: San Andreas.")
+            Some("Elige primero la carpeta de GTA San Andreas.")
         );
         assert_eq!(
             check_samp(Some(dir.path())).detail.as_deref(),

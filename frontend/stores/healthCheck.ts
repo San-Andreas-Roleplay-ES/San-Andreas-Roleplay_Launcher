@@ -24,7 +24,7 @@ export interface HealthEntry {
 }
 
 const INITIAL: HealthEntry[] = [
-  { id: "gta", label: "GTA: San Andreas", state: "checking" },
+  { id: "gta", label: "GTA San Andreas", state: "checking" },
   { id: "samp", label: "SA:MP", state: "checking" },
   { id: "cache", label: "Caché de modelos", state: "checking" },
   { id: "server", label: "Ping con el servidor", state: "checking" },
@@ -265,7 +265,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     if (gtaChoicePending.value) {
       update("gta", {
         state: "warning",
-        detail: `Encontramos ${gtaChoices.value.length} instalaciones de GTA: San Andreas. Elige cuál usar.`,
+        detail: `Encontramos ${gtaChoices.value.length} instalaciones de GTA San Andreas. Elige cuál usar.`,
       })
       return
     }
@@ -538,7 +538,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
       }
       gtaDetected.value = null
       await run()
-      void dialog.success("Listo", "GTA: San Andreas se instaló correctamente.")
+      void dialog.success("Listo", "GTA San Andreas se instaló correctamente.")
       return { ok: true }
     } finally {
       detach()

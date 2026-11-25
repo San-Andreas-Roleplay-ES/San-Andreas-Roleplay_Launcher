@@ -1,4 +1,4 @@
-//! Finds the GTA: San Andreas installs already on this PC, so most players
+//! Finds the GTA San Andreas installs already on this PC, so most players
 //! never have to pick the folder.
 //!
 //! Everything here is read-only and failure-tolerant: registry keys are opened

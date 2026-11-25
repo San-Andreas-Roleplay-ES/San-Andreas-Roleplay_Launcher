@@ -1,4 +1,4 @@
-//! The GTA: San Andreas folder: validation, the user-picked override, and the
+//! The GTA San Andreas folder: validation, the user-picked override, and the
 //! folder pickers.
 
 use std::path::{Path, PathBuf};
@@ -149,7 +149,7 @@ async fn use_dir(app: &AppHandle, dir: &Path) -> PickGameDirResult {
     let missing = find_missing(Some(dir).filter(|d| d.is_absolute()));
     if !missing.is_empty() {
         return PickGameDirResult::error(format!(
-            "La carpeta seleccionada no es una instalación válida de GTA: San Andreas. Falta {}.",
+            "La carpeta seleccionada no es una instalación válida de GTA San Andreas. Falta {}.",
             missing.names().join(", ")
         ));
     }
@@ -158,7 +158,7 @@ async fn use_dir(app: &AppHandle, dir: &Path) -> PickGameDirResult {
 }
 
 pub async fn pick_game_dir(app: &AppHandle) -> PickGameDirResult {
-    let Some(selected) = pick_folder(app, "Selecciona la carpeta de GTA: San Andreas").await else {
+    let Some(selected) = pick_folder(app, "Selecciona la carpeta de GTA San Andreas").await else {
         return PickGameDirResult::cancelled();
     };
     use_dir(app, &selected).await
@@ -170,7 +170,7 @@ pub async fn set_game_dir(app: &AppHandle, path: &str) -> PickGameDirResult {
 }
 
 pub async fn pick_empty_install_dir(app: &AppHandle) -> PickGameDirResult {
-    let title = "Selecciona una carpeta vacía donde instalar GTA: San Andreas";
+    let title = "Selecciona una carpeta vacía donde instalar GTA San Andreas";
     let Some(selected) = pick_folder(app, title).await else {
         return PickGameDirResult::cancelled();
     };

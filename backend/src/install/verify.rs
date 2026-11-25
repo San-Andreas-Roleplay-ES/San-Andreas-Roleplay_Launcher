@@ -50,7 +50,7 @@ pub struct SampVerificationResult {
     pub unverified: bool,
 }
 
-pub const NO_GAME_DIR: &str = "Elige primero la carpeta de GTA: San Andreas.";
+pub const NO_GAME_DIR: &str = "Elige primero la carpeta de GTA San Andreas.";
 
 impl SampVerificationResult {
     pub fn failed(error: impl Into<String>) -> Self {
@@ -219,7 +219,7 @@ mod tests {
         let result = verify(None, &parse(sample()).unwrap()).await;
         assert_eq!(
             serde_json::to_value(result).unwrap(),
-            json!({ "ok": false, "files": [], "error": "Elige primero la carpeta de GTA: San Andreas.", "unverified": false })
+            json!({ "ok": false, "files": [], "error": "Elige primero la carpeta de GTA San Andreas.", "unverified": false })
         );
     }
 

@@ -55,7 +55,7 @@ function inlineActionFor(entry: HealthEntry): InlineAction | undefined {
   return {
     label: "Cambiar ubicación",
     icon: "pi-folder-open",
-    title: "Elige la carpeta donde está instalado GTA: San Andreas",
+    title: "Elige la carpeta donde está instalado GTA San Andreas",
     onClick: () => health.changeGameDir(),
   }
 }

@@ -11,7 +11,7 @@ const props = withDefaults(
     /** "Omitir" was clicked and the backend is stopping. */
     cancelling?: boolean
   }>(),
-  { downloadTitle: "Descargando GTA: San Andreas", cancellable: false, cancelling: false },
+  { downloadTitle: "Descargando GTA San Andreas", cancellable: false, cancelling: false },
 )
 
 const emit = defineEmits<{ cancel: [] }>()

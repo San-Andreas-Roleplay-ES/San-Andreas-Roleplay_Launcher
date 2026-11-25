@@ -27,7 +27,7 @@ use crate::net::manifest::{LauncherManifest, ManifestFileEntry};
 use crate::Ctx;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(120);
-const NO_GAME_DIR: &str = "Elige primero la carpeta de GTA: San Andreas.";
+const NO_GAME_DIR: &str = "Elige primero la carpeta de GTA San Andreas.";
 const UAC_CANCELLED: &str = "Se canceló la solicitud de permisos de administrador.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -133,7 +133,7 @@ async fn run(
         Some("Verificando estado del juego..."),
     );
     if find_game_process().is_some() {
-        return Err("Cierra GTA: San Andreas antes de continuar.".into());
+        return Err("Cierra GTA San Andreas antes de continuar.".into());
     }
 
     let manifest = ctx.manifest.ensure_saved(&ctx.api, &ctx.store).await?;

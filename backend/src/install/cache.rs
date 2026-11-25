@@ -1180,7 +1180,7 @@ async fn run(app: &AppHandle, report: &Reporter, cancel: &Cancel) -> Result<Summ
     report(Progress::new(Phase::Preflight, 0.0).message("Preparando caché..."));
     // The game reads (and writes) this folder: never pull it from under it.
     if find_game_process().is_some() {
-        return Err("Cierra GTA: San Andreas antes de actualizar el caché.".into());
+        return Err("Cierra GTA San Andreas antes de actualizar el caché.".into());
     }
     let ctx = app.state::<Ctx>();
     let Some(list) = cancel.run(ctx.cache.list(&ctx.api)).await else {
