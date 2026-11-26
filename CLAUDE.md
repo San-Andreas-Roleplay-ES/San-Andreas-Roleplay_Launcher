@@ -1,6 +1,6 @@
 # CLAUDE.md — San Andreas Roleplay · SA:MP Launcher
 
-Launcher oficial del servidor SAMP de San Andreas Roleplay. App de escritorio Windows (Tauri 2: frontend Vue en WebView2 + backend Rust) que verifica la instalación de GTA SA, instala SA:MP desde el CDN, sincroniza el caché de modelos del servidor archivo por archivo y lanza el juego. Los datos (manifest, métricas, eventos, lista del caché) vienen en vivo de la API; el CDN solo sirve las descargas pesadas.
+Launcher oficial del servidor SAMP de San Andreas Roleplay. App de escritorio Windows (Tauri 2: frontend Vue en WebView2 + backend Rust) que verifica la instalación de GTA SA, instala SA:MP desde el CDN, instala y gestiona los mods del servidor desde un catálogo firmado, sincroniza el caché de modelos del servidor archivo por archivo y lanza el juego. Los datos (manifest, métricas, eventos, lista del caché, catálogo de mods) vienen en vivo de la API; el CDN (y Backblaze B2 para los paquetes de mods) solo sirve las descargas pesadas.
 
 ---
 
@@ -62,11 +62,11 @@ launcher/
 ├── frontend/                # Frontend Vue (corre dentro de WebView2)
 │   ├── api/                 # launcher.ts (bridge IPC tipado) + public.ts (métricas y eventos normalizados)
 │   ├── assets/              # Assets importados desde código (capas del logo, graffiti, sonidos)
-│   ├── components/          # Componentes Vue por feature (brand/, dialog/, home/)
-│   ├── composables/         # useWindowState, useGameStatus, useServerPing, useUpdater, …
+│   ├── components/          # Componentes Vue por feature (brand/, dialog/, home/, mods/)
+│   ├── composables/         # useWindowState, useGameStatus, useServerPing, useUpdater, useFocusTrap, …
 │   ├── layouts/             # ShellLayout (title bar + banner de update + footer)
 │   ├── pages/               # Vistas full-screen (HomePage)
-│   ├── stores/              # Pinia (healthCheck, dialog)
+│   ├── stores/              # Pinia (healthCheck, mods, dialog)
 │   ├── types/               # Payloads del IPC (espejo de los structs serde de Rust)
 │   ├── utils/               # Helpers puros (nativeFeel, randomTagline)
 │   ├── App.vue
@@ -79,12 +79,13 @@ launcher/
 │   │   ├── commands.rs      # Comandos expuestos al frontend (delgados, delegan en los módulos)
 │   │   ├── config.rs, store.rs  # Config horneada en build y store persistente (JSON)
 │   │   ├── app/             # window, updater, external, events
-│   │   ├── game/            # paths, detect, health, launcher, mods, shortcut
+│   │   ├── game/            # paths, detect, health, launcher, shortcut
 │   │   ├── install/         # samp, gta, cache (+ cache/package: zip, cache/pace: paralelismo), verify, extract, progress, cancel, powershell, fs
+│   │   ├── mods/            # catálogo firmado (signature, source, catalog), estado (status, disk), instalación (install), store (record); fixtures/ de prueba
 │   │   └── net/             # api (API + X-Launcher-Key), http, manifest, query/ (consulta UDP a SA:MP)
 │   ├── capabilities/        # Permisos que la ventana tiene sobre core y plugins
 │   ├── icons/               # Íconos de la app, la ventana y el instalador
-│   ├── build.rs             # Hornea VITE_API_URL / LAUNCHER_KEY / VITE_GAME_CACHE_FOLDER (y los DEV_* en debug)
+│   ├── build.rs             # Hornea VITE_API_URL / LAUNCHER_KEY / VITE_GAME_CACHE_FOLDER, la pubkey del updater (y los DEV_* en debug)
 │   ├── tauri.conf.json      # Ventana, bundle NSIS, updater (endpoint + pubkey)
 │   ├── Cargo.toml
 │   └── .cargo/config.toml   # target-dir → C:\tmp\sarp-target (fuera de OneDrive)
@@ -144,10 +145,11 @@ launcher/
 
 1. **Verificar GTA SA** en la carpeta elegida (o instalarlo desde el RIP del CDN si no está).
 2. **Verificar e instalar SA:MP**: compara los archivos contra el manifest (tamaño + sha256) y, si faltan o están dañados, ejecuta el instalador oficial (pide elevación si la carpeta lo exige). Si la API no responde se verifica contra el último manifest guardado; sin ninguno, con `samp.exe` en la carpeta queda en "no se pudo verificar" (aviso que **no bloquea Jugar**). Solo un SA:MP que falta o está dañado bloquea Jugar.
-3. **Sincronizar el caché del servidor** en `Documents\GTA San Andreas User Files\SAMP\cache\<VITE_GAME_CACHE_FOLDER>\`: si al jugador le falta mucho baja primero el zip del caché (reanudable), después solo los archivos que siguen faltando, y borra los viejos; se puede omitir para jugar ya (ver [Caché del servidor](#caché-del-servidor)).
-4. **Lanzar el juego**: el backend valida IP (IPv4) y puerto igual que el ping, ejecuta `samp.exe IP:PUERTO` y vigila `gta_sa.exe` para reflejar el estado _"Conectado"_. Jugar depende de GTA y SA:MP; el caché solo lo bloquea **mientras se sincroniza** (el backend también se niega a lanzar en ese momento).
-5. **Estado del servidor** (query SA:MP por UDP: ping y jugadores), **métricas** y **eventos** desde la API.
-6. **Auto-actualizar el launcher** cuando haya nueva versión publicada.
+3. **Instalar y mantener los mods** del catálogo firmado (ver [Mods](#mods)): los esenciales (Modloader, ASI Loader) solos, los opcionales a elección del jugador desde el botón _Mods_.
+4. **Sincronizar el caché del servidor** en `Documents\GTA San Andreas User Files\SAMP\cache\<VITE_GAME_CACHE_FOLDER>\`: si al jugador le falta mucho baja primero el zip del caché (reanudable), después solo los archivos que siguen faltando, y borra los viejos; se puede omitir para jugar ya (ver [Caché del servidor](#caché-del-servidor)).
+5. **Lanzar el juego**: el backend valida IP (IPv4) y puerto igual que el ping, ejecuta `samp.exe IP:PUERTO` y vigila `gta_sa.exe` para reflejar el estado _"Conectado"_. Jugar depende de GTA y SA:MP; el caché solo lo bloquea **mientras se sincroniza** y los mods **mientras se instalan o si un esencial no se pudo instalar** (el backend también se niega a lanzar en esos casos).
+6. **Estado del servidor** (query SA:MP por UDP: ping y jugadores), **métricas** y **eventos** desde la API.
+7. **Auto-actualizar el launcher** cuando haya nueva versión publicada.
 
 **Fuera de alcance v1**: auth, edición de `samp.cfg`, perfil del usuario, chat, Socket.IO, onboarding (no hace falta — el instalador ya hace ese rol).
 
@@ -184,6 +186,26 @@ launcher/
 - **Borrado de archivos viejos** (la carpeta es de este servidor): se borran los archivos con nombre de caché que no están en la lista. Salvaguardas: nunca se toca nada que no cumpla la regex ni se entra en subcarpetas o links; nunca se borra si la lista está vacía, si `zipUploadedAt` es `null`, si la lista trajo entradas inválidas o si no se pudo obtener; se conservan los modificados después de `zipUploadedAt` (los bajó el juego después del último zip y la lista todavía no los conoce); y no se borra nada si lo viejo es más de la mitad de los archivos de la carpeta y más de 100 (una lista incompleta nunca vacía el caché de un jugador; queda en el log). Los temporales de una sincronización cortada se limpian.
 - Solo descarga de la `baseUrl` y del `zip.url` que dio la API (https obligatorio en release, sin redirects) y rechaza nombres que no cumplan la regex.
 
+### Mods
+
+Todo sale de un **catálogo firmado**: mods nuevos, versiones y variantes se publican sin republicar el launcher. Código en `backend/src/mods/` (comandos `check_mods`, `sync_mods`, `set_mod_enabled`, `set_mod_variant`, `install_recommended_mod`, `disable_mod_conflicts`, `cancel_mods`; progreso por `mods:install:progress`) y en el frontend `stores/mods.ts` + `components/mods/`.
+
+- **Endpoint**: `GET {API}/api/public/launcher/mods` (mismo cliente con `X-Launcher-Key`, sin redirects) → `payload = { catalog: string | null, signature: string | null }`. `catalog` es el texto exacto del archivo del bucket; `signature`, el `.sig` de `tauri signer sign` (base64 de una firma minisign prehasheada `ED`). Ambos `null` (o un envelope sin `payload`: la API descarta claves vacías) = no hay nada nuevo publicado.
+- **Firma**: se verifica sobre los bytes exactos de `catalog` **antes de parsearlo**, con `minisign-verify` como el updater (la clave es `plugins.updater.pubkey` de `tauri.conf.json`, que `build.rs` hornea como `SARP_UPDATER_PUBKEY`; solo firmas prehasheadas). En debug, `DEV_MODS_PUBKEY` (la clave o la ruta de un archivo con ella) la reemplaza para probar con una clave descartable. **Firma inválida = no se instala nada de ese catálogo**: se sigue con el último aceptado (si hay) y la fila avisa; nunca bloquea Jugar.
+- **Anti-rollback**: el catálogo tiene un `serial` entero. El store guarda el más alto aceptado (`modsSerial`) y rechaza uno verificado con `serial` menor (igual es válido). El último aceptado se guarda entero (`modsCatalog: { catalog, signature }`) y se vuelve a verificar al usarlo; es el que se usa si la API no responde, si manda algo que no verifica o si manda `null` (un "nada" sin firmar nunca descarta un catálogo firmado ni desinstala nada). Sin ninguno guardado: API caída → aviso, `null` → "no hay mods". El catálogo se cachea 60 s en memoria (no si la API no respondió).
+- **Catálogo (schemaVersion 1; uno mayor se rechaza)**: `{ schemaVersion, serial, generatedAt, mods: [...] }`; cada mod: `id` (`^[a-z0-9][a-z0-9-]{0,39}$`), `name`, `description`, `category`, `required`, `enabledByDefault`, `requires` (ids), `equivalents` (conjuntos de rutas; `/` final = carpeta), `replaces` (rutas relativas al juego), `minLauncher` (semver, opcional), `defaultVariant`, `variants[]`: `id`, `label` (`""` si hay una sola), `version` (`^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$`, **no es semver: solo se compara por igualdad**), `target` (`game` = carpeta del juego, `modloader` = `<GTA>/modloader/`), `package { url, bytes, sha256 }`, `files[] { path, bytes, sha256, keep? }`. Campos desconocidos se ignoran. **Un mod inválido se salta (log), nunca invalida el resto**: rutas estrictas (barras `/`, sin `..`, absolutas, unidad, `\`, `<>:"|?*`, control, partes que terminan en punto o espacio, nombres de dispositivo, más de 200 caracteres, duplicados sin distinguir mayúsculas, un archivo que es carpeta de otro), `replaces` que renombraría archivos de algún mod o del juego/SA-MP/Modloader, ciclos de `requires`, ids duplicados (gana el primero).
+- **Estados** (`check_mods`): `notInstalled`, `installed`, `outdated` (otra versión u otros archivos que los registrados), `damaged` (un archivo registrado falta o cambió → se repara), `foreign` (instalado por otros medios: todos los paths de algún conjunto de `equivalents`; o nuestros archivos con el mod apagado por el usuario: _"Ya está instalado por tu cuenta"_, no se toca, se ofrece _"Instalar versión recomendada"_), `blocked` (`minLauncher` mayor que el launcher, o una dependencia que no está o está bloqueada; no se instala, se puede apagar). Encima: `installing`, `error` (el último intento de la sesión falló) y `blocking`.
+- **Adopción**: sin registro, si todos los archivos (no `keep`) de una variante están con su sha256, se adopta como instalada (y esa variante queda como elección del usuario). Pasa también con instalaciones a mano idénticas a las nuestras.
+- **Qué se quiere**: esenciales siempre (variante elegible); opcionales según la preferencia guardada (`modsPrefs`), o `enabledByDefault` si no hay. Activar un mod activa sus dependencias; no se puede apagar uno que otro mod activo necesita (_"Primero desactiva X"_) ni un esencial. Un opcional instalado por defecto guarda la preferencia al instalarse (un cambio posterior del default del catálogo no lo apaga).
+- **Flujo automático** (orden de la salud: GTA → SA:MP → mods → caché): con GTA y SA:MP bien y el juego cerrado, `sync_mods` instala lo esencial y lo activado por defecto, actualiza (esenciales y opcionales activos), repara y quita lo apagado; después arranca la sincronización del caché. Un mod que falló no se reintenta solo en la sesión: _"Reintentar"_ (fila o panel), el botón de actualizar o el próximo arranque. **Un esencial bloquea Jugar solo si su instalación falló y no está en su lugar** (`notInstalled`/`damaged`; una actualización fallida con la versión vieja funcionando no bloquea) **y mientras se instalan mods**. Catálogo inaccesible y sin uno guardado → aviso, no bloquea.
+- **Instalación** (`install.rs`): baja el paquete reanudable a `%TEMP%\sarp-mods-zip\` (sin redirects, https en release, nunca con `X-Launcher-Key`), verifica su sha256, extrae **solo** las entradas que son `files[].path` (lo demás del zip se ignora) a una carpeta temporal verificando tamaño y sha256 de cada una, y recién ahí toca el juego. Todas las rutas pasan por `disk::confined` (dentro de la carpeta del juego, nunca a través de un symlink o junction). Escritura directa a `*.sarp-part` + rename; si alguna carpeta no se puede escribir (Program Files), **todas** las operaciones de la corrida van en un solo script de PowerShell elevado (un solo UAC). Después se verifica la carpeta y se registra exactamente lo que quedó (`modsInstalled[<carpeta normalizada>][<id>]`: variante, versión, archivos con hash, backups, conflictos desactivados). No queda basura temporal (el zip parcial de una descarga cortada espera un día para retomarse).
+- **Backups**: antes de pisar un archivo que el launcher no instaló (p. ej. el `vorbisFile.dll` del juego) se copia a `%LOCALAPPDATA%\es.sarp.launcher\mod-backups\<hash de la carpeta>\<id>\…` y se restaura al desinstalar. Un archivo que no existía se borra al desinstalar.
+- **Desinstalar / cambiar variante**: se quitan exactamente los archivos registrados que siguen siendo nuestros (con el hash registrado; uno que el usuario modificó se deja), nunca los `keep`, se restauran backups y se borran las carpetas que quedan vacías (nunca las del juego). Cambiar de variante prepara la nueva antes de tocar nada y no reescribe archivos idénticos.
+- **`keep`**: configuración del usuario: se escribe solo si no existe; nunca se pisa, se verifica ni se borra.
+- **`replaces`**: si el mod está instalado y alguno existe, se ofrece _"Desactivar el otro"_: se renombra con un punto delante (`modloader/radar_hq` → `modloader/.radar_hq`; Modloader ignora carpetas con punto). Se deshace solo al apagar el mod. Nunca se borra nada del usuario.
+- **Seguridad**: nada se toca con `gta_sa.exe` abierto (el backend se niega; el panel lo avisa). Una corrida a la vez; _"Omitir"_ (`cancel_mods`, cancelación cooperativa) solo aparece si la corrida es de opcionales. Un mod que sale del catálogo queda como esté (no se desinstala).
+- **UI**: fila _Mods_ en el estado de la instalación con el botón del cubo (`pi-box`; un punto ámbar si hay algo para revisar) que abre el panel: _Esenciales_ (switch bloqueado + estado) y _Opcionales_ agrupados por categoría (switch, variantes como botones con `aria-pressed`), con tamaño, versión, progreso, _"Reintentar"_, la nota de instalación propia con su acción y el conflicto de `replaces`. Escape cierra, el foco queda atrapado dentro y vuelve al botón al cerrar.
+
 ---
 
 ## Variables de Entorno
@@ -217,9 +239,14 @@ DEV_GTA_PATH=C:\Program Files (x86)\Rockstar Games\GTA San Andreas
 # Solo dev: carpetas (separadas por ;) que reemplazan TODAS las fuentes de la
 # detección de GTA; un ";" solo = "no se encontró nada"
 # DEV_GTA_CANDIDATES=C:\tmp\gta\A;C:\tmp\gta\B
+
+# Solo dev: clave pública minisign (o ruta a un archivo con ella) que reemplaza
+# a la del updater para verificar el catálogo de mods
+# DEV_MODS_PUBKEY=C:\tmp\mods-test\test.key.pub
 ```
 
-- `VITE_API_URL`, `LAUNCHER_KEY` y `VITE_GAME_CACHE_FOLDER` los lee **`backend/build.rs` en tiempo de compilación** (son obligatorios: el build falla con un mensaje claro si falta alguno, o si `VITE_API_URL` no es https) y quedan horneados en el binario Rust. Los `DEV_*` solo se hornean en builds debug.
+- `VITE_API_URL`, `LAUNCHER_KEY` y `VITE_GAME_CACHE_FOLDER` los lee **`backend/build.rs` en tiempo de compilación** (son obligatorios: el build falla con un mensaje claro si falta alguno, o si `VITE_API_URL` no es https) y quedan horneados en el binario Rust. Los `DEV_*` solo se hornean en builds debug. `build.rs` también hornea `plugins.updater.pubkey` de `tauri.conf.json` (con ella se verifica el catálogo de mods): una sola clave, en un solo lugar.
+- **Ojo en dev**: si el store apunta a la carpeta real de GTA y la API publica un catálogo de mods, `yarn dev` instala en ella los esenciales y los opcionales por defecto. Para probar, una carpeta falsa (`DEV_GTA_CANDIDATES`) y un store sin `gtaPath`.
 - El frontend solo usa `VITE_GAME_SERVER_*` (y nunca habla con la API ni con el CDN: todo pasa por comandos del backend).
 - **Importante**: el `.env` se _bundlea_ dentro del `.exe` en build (en el JS del frontend y en el binario del backend). Cualquier cambio requiere republicar el launcher. Por eso lo dinámico (archivos, versiones) vive en la API, no en `.env`.
 
@@ -402,7 +429,7 @@ Si alguno falla, **el cambio no está terminado**. Hay que arreglar lo que repor
 - **Páginas full-screen** van en `frontend/pages/`. Componentes reutilizables en `frontend/components/<feature>/`.
 - **Lógica reutilizable** → composables en `frontend/composables/`.
 - **Estado global** → Pinia stores en `frontend/stores/`.
-- **Datos remotos** → módulos en `frontend/api/`, siempre vía comandos del backend (`launcher.fetchGlobalMetrics()`, `launcher.fetchEvents()`, `launcher.checkCache()`...). La CSP (`connect-src`) no permite ningún host externo.
+- **Datos remotos** → módulos en `frontend/api/`, siempre vía comandos del backend (`launcher.fetchGlobalMetrics()`, `launcher.fetchEvents()`, `launcher.checkCache()`, `launcher.checkMods()`...). La CSP (`connect-src`) no permite ningún host externo.
 
 ---
 
@@ -416,6 +443,8 @@ Si alguno falla, **el cambio no está terminado**. Hay que arreglar lo que repor
 | [backend/build.rs](backend/build.rs)                         | Variables del `.env` horneadas en el binario         |
 | [backend/src/net/api.rs](backend/src/net/api.rs)             | Cliente de la API (envelope, `X-Launcher-Key`)       |
 | [backend/src/install/cache.rs](backend/src/install/cache.rs) | Sincronización del caché (zip + archivo por archivo) |
+| [backend/src/mods/mod.rs](backend/src/mods/mod.rs)           | Mods: catálogo firmado, estados, comandos            |
+| [backend/src/mods/install.rs](backend/src/mods/install.rs)   | Instalación de mods (backups, elevación, registro)   |
 | [frontend/api/launcher.ts](frontend/api/launcher.ts)         | Bridge IPC tipado (comandos + eventos)               |
 | [frontend/types/](frontend/types/)                           | Payloads compartidos con Rust                        |
 | [vite.config.ts](vite.config.ts)                             | Plugin Vue, alias, dev server para Tauri             |

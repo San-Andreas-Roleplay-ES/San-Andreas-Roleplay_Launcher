@@ -288,7 +288,7 @@ fn check_zip(value: &Value, require_https: bool) -> Option<ZipInfo> {
 /// `raw` without a trailing slash, if it is a plain http(s) URL we may
 /// download from (https only in release builds). A query (the zip's `?v=`)
 /// only where `query` allows it.
-fn check_url(raw: &str, require_https: bool, query: bool) -> Option<String> {
+pub(crate) fn check_url(raw: &str, require_https: bool, query: bool) -> Option<String> {
     let url = url::Url::parse(raw).ok()?;
     let scheme_ok = url.scheme() == "https" || (!require_https && url.scheme() == "http");
     let plain = url.host_str().is_some()
@@ -570,7 +570,7 @@ fn remove_files(dir: &Path, names: &[String], allowed: fn(&str) -> bool) -> usiz
 
 /// Runs `op`; if Windows refuses because `path` is read-only, clears the
 /// attribute and runs it once more.
-fn with_writable(path: &Path, op: impl Fn() -> io::Result<()>) -> io::Result<()> {
+pub(crate) fn with_writable(path: &Path, op: impl Fn() -> io::Result<()>) -> io::Result<()> {
     match op() {
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             let Ok(meta) = fs::symlink_metadata(path) else {

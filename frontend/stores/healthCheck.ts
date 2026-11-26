@@ -3,8 +3,9 @@ import { computed, ref, shallowRef, watch } from "vue"
 import { launcher } from "@/api/launcher"
 import { useServerPing } from "@/composables/useServerPing"
 import { useDialogStore } from "@/stores/dialog"
+import { useModsStore } from "@/stores/mods"
 import type { CacheHealth, CacheInstallProgress, CacheInstallResult } from "@/types/cache"
-import type { DetectedMod, GtaCandidate, GtaInstallProgress } from "@/types/gta"
+import type { GtaCandidate, GtaInstallProgress } from "@/types/gta"
 import type { InstallProgress, SampVerificationResult } from "@/types/samp"
 
 export type GtaActionType = "install" | null
@@ -16,7 +17,7 @@ export type CacheActionType = "install" | "update" | null
 export type CheckState = "checking" | "ok" | "warning" | "error"
 
 export interface HealthEntry {
-  id: "gta" | "samp" | "cache" | "server"
+  id: "gta" | "samp" | "mods" | "cache" | "server"
   label: string
   state: CheckState
   detail?: string
@@ -26,6 +27,7 @@ export interface HealthEntry {
 const INITIAL: HealthEntry[] = [
   { id: "gta", label: "GTA San Andreas", state: "checking" },
   { id: "samp", label: "SA:MP", state: "checking" },
+  { id: "mods", label: "Mods", state: "checking" },
   { id: "cache", label: "Caché de modelos", state: "checking" },
   { id: "server", label: "Ping con el servidor", state: "checking" },
 ]
@@ -86,7 +88,6 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
   const installProgress = ref<InstallProgress | null>(null)
   const lastSampVerification = ref<SampVerificationResult | null>(null)
   const requiresElevation = ref<boolean>(false)
-  const gtaMods = ref<DetectedMod[]>([])
   const gtaMissingAll = ref<boolean>(false)
   const gtaInstalling = ref<boolean>(false)
   const gtaInstallProgress = ref<GtaInstallProgress | null>(null)
@@ -115,6 +116,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
   const gameRunning = ref<boolean>(false)
   const serverPing = useServerPing()
   const dialog = useDialogStore()
+  const mods = useModsStore()
 
   // Bootstrap the game-status mirror and keep it in sync with the OS. `run`
   // waits for it, so the first check never mistakes a running game for none.
@@ -144,12 +146,17 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
 
   // Playing needs GTA and SA:MP. The cache only holds it back while a sync
   // writes the folder (or the check that may start one is still running):
-  // whatever it could not download, the game fetches when it connects.
+  // whatever it could not download, the game fetches when it connects. Mods
+  // hold it back while they are written, and when a required one could not
+  // be installed (the row says why, with "Reintentar").
   const allOk = computed(
     () =>
       !cacheInstalling.value &&
+      !mods.working &&
+      !mods.blocking &&
       gtaReady.value &&
       sampReady.value &&
+      stateOf("mods") !== "checking" &&
       stateOf("cache") !== "checking",
   )
 
@@ -181,9 +188,94 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
 
   function reset() {
     entries.value = INITIAL.map((e) => ({ ...e }))
-    gtaMods.value = []
     gtaMissingAll.value = false
     cacheActionType.value = null
+  }
+
+  /** The Mods row, from the mods store. */
+  function describeMods(): Partial<HealthEntry> {
+    const health = mods.health
+    const clear = { detail: undefined, meta: undefined }
+    if (!health) {
+      return mods.checking
+        ? { ...clear, state: "checking" }
+        : { ...clear, state: "warning", detail: "No se pudieron comprobar los mods." }
+    }
+    if (health.catalog.state === "missing") {
+      return { ...clear, state: "warning", detail: health.catalog.detail }
+    }
+    if (health.mods.length === 0) {
+      return { ...clear, state: "ok", meta: "No hay mods disponibles por ahora." }
+    }
+    const failed = health.mods.find((m) => m.blocking) ?? health.mods.find((m) => m.error)
+    if (failed) {
+      return {
+        ...clear,
+        state: failed.blocking ? "error" : "warning",
+        detail: `${failed.name}: ${failed.error}`,
+      }
+    }
+    if (health.pending && !(gtaReady.value && sampReady.value)) {
+      return { ...clear, state: "warning", detail: "Esperando a que GTA y SA:MP estén listos." }
+    }
+    if (health.pending && gameRunning.value) {
+      return { ...clear, state: "warning", detail: "Se instalarán al cerrar el juego." }
+    }
+    const conflict = health.mods.find((m) => m.conflicts.length > 0)
+    if (conflict) {
+      return {
+        ...clear,
+        state: "warning",
+        detail: `${conflict.name} puede chocar con otra instalación tuya. Revísalo en Mods.`,
+      }
+    }
+    if (health.catalog.detail) {
+      return { ...clear, state: "warning", detail: health.catalog.detail }
+    }
+    const active = health.mods
+      .filter((m) => m.state === "installed" || m.state === "outdated" || m.state === "foreign")
+      .map((m) => m.name)
+    return {
+      ...clear,
+      state: "ok",
+      meta: active.length > 0 ? `Activos: ${joinFileList(active)}.` : "Ninguno activo.",
+    }
+  }
+
+  watch(
+    () => [mods.health, mods.checking, gtaReady.value, sampReady.value, gameRunning.value],
+    () => {
+      // A re-check while a row already shows results keeps them until the
+      // new ones land.
+      if (mods.checking && mods.health && stateOf("mods") !== "checking") return
+      update("mods", describeMods())
+    },
+  )
+
+  /** The Mods row once the catalog check (started earlier) lands. */
+  async function checkMods(pending: Promise<void>): Promise<void> {
+    await pending
+    update("mods", describeMods())
+  }
+
+  /** The automatic flows, mods first (required ones, defaults, updates),
+   *  then the cache, once GTA and SA:MP are ready and the game is closed.
+   *  Started without awaiting, so the rest of the checks (and the page)
+   *  don't wait for the downloads. */
+  function startInstalls(): void {
+    if (mods.shouldSync(gtaReady.value && sampReady.value && !gameRunning.value)) {
+      void mods.sync().then(() => {
+        if (shouldSync()) void installCache()
+      })
+      return
+    }
+    if (shouldSync()) void installCache()
+  }
+
+  /** "Reintentar" on the Mods row. */
+  async function retryMods(): Promise<void> {
+    if (gameRunning.value) return
+    await mods.sync({ retry: true })
   }
 
   function syncServerEntry() {
@@ -254,14 +346,8 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
             ? `Detectada automáticamente en ${path}`
             : undefined,
       })
-      try {
-        gtaMods.value = await launcher.detectGtaMods()
-      } catch {
-        gtaMods.value = []
-      }
       return
     }
-    gtaMods.value = []
     if (gtaChoicePending.value) {
       update("gta", {
         state: "warning",
@@ -348,14 +434,18 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     reset()
     // The cache check (an API call plus a folder scan) starts right away;
     // detection runs first among the local checks, as it may set the folder
-    // they look at.
+    // they (and the mods check) look at.
     const cache = launcher.checkCache()
     await detectGta()
+    const modsCheck = mods.check({ force: options.force })
     await Promise.all([checkGta(), checkSamp(), checkElevation()])
+    // GTA → SA:MP → mods → cache: required mods install before the cache
+    // sync starts, and Play waits for them.
+    await checkMods(modsCheck)
     await checkCache(cache)
     // Straight away, before any other await: there is no moment where Play
-    // looks enabled and then a sync starts under it.
-    if (shouldSync()) void installCache()
+    // looks enabled and then an install starts under it.
+    startInstalls()
     await serverPing.ping()
     syncServerEntry()
     running.value = false
@@ -556,7 +646,6 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     lastSampVerification,
     sampActionType,
     requiresElevation,
-    gtaMods,
     gtaMissingAll,
     gtaActionType,
     gtaInstalling,
@@ -574,6 +663,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     cacheRetry,
     gameRunning,
     run,
+    retryMods,
     installSamp,
     installCache,
     cancelCache,

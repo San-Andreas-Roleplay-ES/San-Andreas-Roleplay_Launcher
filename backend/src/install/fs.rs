@@ -158,12 +158,15 @@ pub fn new_temp_dir() -> io::Result<PathBuf> {
 
 /// Our temp folders and scripts. `sarp-cache-<hex>` held the Electron
 /// launcher's cache zip download; the current one (`sarp-cache-zip`) is
-/// passed to the sweep as kept.
-const SWEEP_PREFIXES: [&str; 4] = [
+/// passed to the sweep as kept. `sarp-mods-` covers the mod packages folder
+/// (a partial left by a cut download waits a day for a retry) and the
+/// elevated install scripts.
+const SWEEP_PREFIXES: [&str; 5] = [
     "sarp-launcher-",
     "sarp-cache-",
     "sarp-copy-",
     "sarp-extract-",
+    "sarp-mods-",
 ];
 const ZOMBIE_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 

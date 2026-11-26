@@ -8,6 +8,7 @@ import EventModal from "@/components/home/EventModal.vue"
 import LogoMark from "@/components/brand/LogoMark.vue"
 import ServerStatus from "@/components/home/ServerStatus.vue"
 import { useHealthCheckStore } from "@/stores/healthCheck"
+import { useModsStore } from "@/stores/mods"
 import { useEvents } from "@/composables/useEvents"
 import { useRotatingTagline } from "@/composables/useRotatingTagline"
 import { useGameStatus } from "@/composables/useGameStatus"
@@ -15,6 +16,7 @@ import { launcher } from "@/api/launcher"
 import type { ServerEvent } from "@/api/public"
 
 const health = useHealthCheckStore()
+const mods = useModsStore()
 const { events, loading: eventsLoading, load: loadEvents } = useEvents()
 const { tagline } = useRotatingTagline()
 const { phase, launchMessage, launch } = useGameStatus()
@@ -95,17 +97,20 @@ function openSignup() {
 }
 
 function showBlockHint() {
-  // Only GTA and a missing SA:MP block playing; the cache only while it syncs.
+  // GTA, a missing SA:MP and a required mod that failed to install block
+  // playing; the cache and the mods only while they are written.
   const failing = health.entries.find(
     (e) =>
       (e.id === "gta" && e.state !== "ok" && e.state !== "checking") ||
-      (e.id === "samp" && e.state === "error"),
+      ((e.id === "samp" || e.id === "mods") && e.state === "error"),
   )
   blockHint.value =
     failing?.detail ??
-    (health.cacheInstalling
-      ? "Espera a que termine de actualizarse el caché, o pulsa «Omitir» para jugar ya."
-      : "Faltan archivos del juego — verifica tu instalación.")
+    (mods.working
+      ? "Espera a que terminen de instalarse los mods."
+      : health.cacheInstalling
+        ? "Espera a que termine de actualizarse el caché, o pulsa «Omitir» para jugar ya."
+        : "Faltan archivos del juego — verifica tu instalación.")
   setTimeout(() => {
     blockHint.value = null
   }, 3500)
@@ -137,7 +142,7 @@ function showBlockHint() {
           </div>
           <div class="divide-y divide-white/5">
             <div
-              v-for="i in 4"
+              v-for="i in 5"
               :key="i"
               class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
             >

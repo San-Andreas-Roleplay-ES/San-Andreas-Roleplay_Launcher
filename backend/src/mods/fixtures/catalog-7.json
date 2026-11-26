@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "serial": 7,
+  "generatedAt": "2026-11-26T12:00:00.000Z",
+  "publisher": "fixture: unknown top-level fields are ignored",
+  "mods": [
+    {
+      "id": "modloader",
+      "name": "Modloader",
+      "description": "Carga mods desde la carpeta modloader sin tocar los archivos del juego.",
+      "category": "essential",
+      "required": true,
+      "enabledByDefault": true,
+      "requires": [],
+      "equivalents": [["modloader.asi", "modloader/"]],
+      "replaces": [],
+      "minLauncher": "1.2.0",
+      "defaultVariant": "default",
+      "variants": [
+        {
+          "id": "default",
+          "label": "",
+          "version": "0.3.7",
+          "target": "game",
+          "package": {
+            "url": "https://f005.backblazeb2.com/file/sarp-public/mods/modloader/0.3.7/default.zip",
+            "bytes": 123,
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "files": [
+            { "path": "modloader.asi", "bytes": 673280, "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
+            { "path": "modloader/modloader.ini", "bytes": 10, "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "keep": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asi-loader",
+      "name": "ASI Loader",
+      "description": "Carga los plugins .asi del juego.",
+      "category": "essential",
+      "required": true,
+      "enabledByDefault": true,
+      "requires": [],
+      "equivalents": [["vorbisFile.dll", "vorbisHooked.dll"], ["dinput8.dll"]],
+      "replaces": [],
+      "defaultVariant": "silent",
+      "variants": [
+        {
+          "id": "silent",
+          "label": "",
+          "version": "1.3",
+          "target": "game",
+          "package": {
+            "url": "https://f005.backblazeb2.com/file/sarp-public/mods/asi-loader/1.3/silent.zip",
+            "bytes": 456,
+            "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "files": [
+            { "path": "vorbisFile.dll", "bytes": 53248, "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "radar",
+      "name": "Radar",
+      "description": "Mapa del radar con las calles del servidor.",
+      "category": "hud",
+      "required": false,
+      "enabledByDefault": true,
+      "requires": ["modloader"],
+      "equivalents": [],
+      "replaces": ["modloader/radar_hq", "modloader/radar_lq"],
+      "defaultVariant": "lq",
+      "futureField": { "nested": true },
+      "variants": [
+        {
+          "id": "lq",
+          "label": "Calidad estándar",
+          "version": "2.0.0",
+          "target": "modloader",
+          "package": {
+            "url": "https://f005.backblazeb2.com/file/sarp-public/mods/radar/2.0.0/lq.zip",
+            "bytes": 789,
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "files": [
+            { "path": "radar_sarp/radar00.txd", "bytes": 4096, "sha256": "7777777777777777777777777777777777777777777777777777777777777777" }
+          ]
+        },
+        {
+          "id": "hd",
+          "label": "Alta definición",
+          "version": "2.0.0",
+          "target": "modloader",
+          "package": {
+            "url": "https://f005.backblazeb2.com/file/sarp-public/mods/radar/2.0.0/hd.zip",
+            "bytes": 987,
+            "sha256": "8888888888888888888888888888888888888888888888888888888888888888"
+          },
+          "files": [
+            { "path": "radar_sarp/radar00.txd", "bytes": 16384, "sha256": "9999999999999999999999999999999999999999999999999999999999999999" }
+          ]
+        }
+      ]
+    }
+  ]
+}

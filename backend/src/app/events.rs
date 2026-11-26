@@ -9,6 +9,7 @@ pub const WINDOW_STATE_CHANGED: &str = "window:state:changed";
 pub const SAMP_INSTALL_PROGRESS: &str = "samp:install:progress";
 pub const GTA_INSTALL_PROGRESS: &str = "gta:install:progress";
 pub const CACHE_INSTALL_PROGRESS: &str = "cache:install:progress";
+pub const MODS_INSTALL_PROGRESS: &str = "mods:install:progress";
 pub const UPDATER_AVAILABLE: &str = "updater:available";
 pub const UPDATER_PROGRESS: &str = "updater:progress";
 pub const UPDATER_DOWNLOADED: &str = "updater:downloaded";

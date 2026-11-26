@@ -51,6 +51,56 @@ pub fn safe_relative_path(name: &str) -> Option<PathBuf> {
     Some(parts.iter().collect())
 }
 
+/// Windows device names: `CON`, `NUL.txt`, `com1`... open the device, not a
+/// file, in any folder.
+fn is_reserved_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).trim_end();
+    let upper = stem.to_ascii_uppercase();
+    if matches!(
+        upper.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
+        return true;
+    }
+    let mut chars = upper.chars();
+    let prefix: String = chars.by_ref().take(3).collect();
+    let digit = |c: char| c.is_ascii_digit() || matches!(c, '¹' | '²' | '³');
+    matches!(prefix.as_str(), "COM" | "LPT")
+        && chars.next().is_some_and(digit)
+        && chars.next().is_none()
+}
+
+/// Stricter than [`safe_relative_path`], for paths a catalog names (mods):
+/// nothing is normalised, anything odd is refused. Forward slashes only, no
+/// empty, `.` or `..` parts, no drive or root, no characters Windows rejects
+/// or treats specially (`:` streams, `\`, `*?"<>|`, control characters), no
+/// device names and no part ending in a dot or space (Windows drops those,
+/// so two names could reach the same file). `dir`: a trailing `/` is allowed
+/// (and kept out of the parts). Returns the parts.
+pub fn strict_relative_path(path: &str, dir: bool) -> Option<Vec<&str>> {
+    let body = match path.strip_suffix('/') {
+        Some(body) if dir => body,
+        _ => path,
+    };
+    // The publisher's limit too: well under MAX_PATH once under a game folder.
+    if body.is_empty() || body.chars().count() > 200 {
+        return None;
+    }
+    let parts: Vec<&str> = body.split('/').collect();
+    let ok = parts.iter().all(|part| {
+        !part.is_empty()
+            && *part != "."
+            && *part != ".."
+            && !part.ends_with(['.', ' '])
+            && !part.starts_with(' ')
+            && !part.chars().any(|c| {
+                c.is_control() || matches!(c, '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            })
+            && !is_reserved_name(part)
+    });
+    ok.then_some(parts)
+}
+
 struct Plan {
     dirs: BTreeSet<PathBuf>,
     files: Vec<(usize, PathBuf, u64)>,
@@ -223,6 +273,75 @@ mod tests {
         ] {
             assert_eq!(safe_relative_path(bad), None, "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn strict_paths() {
+        assert_eq!(
+            strict_relative_path("modloader/radar/radar00.txd", false),
+            Some(vec!["modloader", "radar", "radar00.txd"])
+        );
+        assert_eq!(
+            strict_relative_path("modloader.asi", false),
+            Some(vec!["modloader.asi"])
+        );
+        assert_eq!(
+            strict_relative_path(".hidden/x", false),
+            Some(vec![".hidden", "x"])
+        );
+        assert_eq!(
+            strict_relative_path("modloader/", true),
+            Some(vec!["modloader"])
+        );
+        assert_eq!(strict_relative_path("modloader/", false), None);
+        assert_eq!(
+            strict_relative_path("console.txt", false),
+            Some(vec!["console.txt"])
+        );
+        assert_eq!(strict_relative_path("COM10", false), Some(vec!["COM10"]));
+        for bad in [
+            "",
+            "/",
+            "/abs.dll",
+            "a//b",
+            "./a",
+            "a/./b",
+            "../evil.dll",
+            "a/../b",
+            "a\\b",
+            "C:/Windows/x.dll",
+            "c:x.dll",
+            "x.dll:stream",
+            "a*b",
+            "a?b",
+            "a\"b",
+            "a<b",
+            "a>b",
+            "a|b",
+            "tab\there",
+            "nul\0",
+            "CON",
+            "nul.txt",
+            "Aux.dll",
+            "dir/com1.asi",
+            "LPT9",
+            "lpt¹.txt",
+            "trailing.",
+            "trailing ",
+            " leading",
+            "dir./x",
+        ] {
+            assert_eq!(strict_relative_path(bad, false), None, "{bad:?}");
+            assert_eq!(strict_relative_path(bad, true), None, "{bad:?} (dir)");
+        }
+        assert_eq!(strict_relative_path(&"a/".repeat(130), false), None);
+        let longest = format!("{}/x", "d".repeat(198));
+        assert!(strict_relative_path(&longest, false).is_some());
+        assert_eq!(
+            strict_relative_path(&format!("{longest}y"), false),
+            None,
+            "over 200"
+        );
     }
 
     #[test]

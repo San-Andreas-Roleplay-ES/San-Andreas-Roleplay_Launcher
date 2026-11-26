@@ -10,12 +10,12 @@ use crate::app::{external, updater};
 use crate::game::detect::{self, Candidate, Detection};
 use crate::game::health::{self, CacheHealth, HealthCheckPayload};
 use crate::game::launcher::{self, GameLaunchResult, GameStatus};
-use crate::game::mods::{self, DetectedMod};
 use crate::game::paths::{self, game_dir, PickGameDirResult};
 use crate::install::cache::{self, CacheInstallResult};
 use crate::install::gta::{self, GtaInstallResult};
 use crate::install::samp::{self, InstallResult};
 use crate::install::verify::{self, SampVerificationResult};
+use crate::mods::{self, ModsHealth, ModsSyncResult, Request};
 use crate::net::manifest::{self, LauncherManifest};
 use crate::net::query::{self, PingResult};
 use crate::Ctx;
@@ -71,11 +71,6 @@ pub async fn pick_empty_install_dir(app: AppHandle) -> PickGameDirResult {
     paths::pick_empty_install_dir(&app).await
 }
 
-#[tauri::command]
-pub async fn detect_gta_mods(app: AppHandle) -> Vec<DetectedMod> {
-    mods::detect(game_dir(&app.state::<Ctx>().store).as_deref())
-}
-
 // ---- install ----
 
 #[tauri::command]
@@ -119,6 +114,51 @@ pub async fn install_cache(app: AppHandle) -> CacheInstallResult {
 #[tauri::command]
 pub fn cancel_cache(app: AppHandle) -> bool {
     cache::cancel(&app)
+}
+
+// ---- mods ----
+
+/// The Mods row and panel: the catalog's mods and their state in the game
+/// folder. `force`: fetch the catalog again. Never rejects.
+#[tauri::command]
+pub async fn check_mods(app: AppHandle, force: Option<bool>) -> ModsHealth {
+    mods::check(&app, force.unwrap_or(false)).await
+}
+
+/// The automatic flow: required mods, defaults, updates, repairs. `retry`:
+/// also the mods that failed this session.
+#[tauri::command]
+pub async fn sync_mods(app: AppHandle, retry: Option<bool>) -> ModsSyncResult {
+    let retry = retry.unwrap_or(false);
+    mods::run(&app, Request::Auto { retry }).await
+}
+
+#[tauri::command]
+pub async fn set_mod_enabled(app: AppHandle, id: String, enabled: bool) -> ModsSyncResult {
+    mods::run(&app, Request::Enable { id, enabled }).await
+}
+
+#[tauri::command]
+pub async fn set_mod_variant(app: AppHandle, id: String, variant: String) -> ModsSyncResult {
+    mods::run(&app, Request::Variant { id, variant }).await
+}
+
+/// "Instalar versión recomendada" over an install made by other means.
+#[tauri::command]
+pub async fn install_recommended_mod(app: AppHandle, id: String) -> ModsSyncResult {
+    mods::run(&app, Request::Recommended { id }).await
+}
+
+/// Renames the mod's `replaces` out of the way (reversible).
+#[tauri::command]
+pub async fn disable_mod_conflicts(app: AppHandle, id: String) -> ModsSyncResult {
+    mods::run(&app, Request::Conflicts { id }).await
+}
+
+/// Stops the running mods run. `false` when none was running.
+#[tauri::command]
+pub fn cancel_mods(app: AppHandle) -> bool {
+    mods::cancel(&app)
 }
 
 // ---- net ----

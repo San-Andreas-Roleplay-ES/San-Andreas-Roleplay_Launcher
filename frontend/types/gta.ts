@@ -22,13 +22,6 @@ export interface GtaInstallResult {
   cancelled?: boolean
 }
 
-export type ModId = "modloader" | "asi-loader"
-
-export interface DetectedMod {
-  id: ModId
-  label: string
-}
-
 /** Where an install was found (`detect::Source` in Rust), best first. */
 export type GtaSource =
   | "samp"

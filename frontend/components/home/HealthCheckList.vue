@@ -2,15 +2,17 @@
 import { computed, onMounted, ref, watch } from "vue"
 import HealthCheckItem from "./HealthCheckItem.vue"
 import type { ItemAction, InlineAction } from "./HealthCheckItem.vue"
-import ModChip from "./ModChip.vue"
 import GtaInstallRow from "./GtaInstallRow.vue"
 import GtaPicker from "./GtaPicker.vue"
+import ModsPanel from "@/components/mods/ModsPanel.vue"
 import type { HealthEntry } from "@/stores/healthCheck"
 import { useHealthCheckStore } from "@/stores/healthCheck"
+import { MODS_BUTTON_ID, useModsStore } from "@/stores/mods"
 import { useServerPing } from "@/composables/useServerPing"
 import { usePingCountdown } from "@/composables/usePingCountdown"
 
 const health = useHealthCheckStore()
+const mods = useModsStore()
 
 const COOLDOWN_MS = 1000
 const onCooldown = ref(false)
@@ -35,7 +37,8 @@ const disabled = computed(
     onCooldown.value ||
     health.installing ||
     health.gtaInstalling ||
-    health.cacheInstalling,
+    health.cacheInstalling ||
+    mods.working,
 )
 
 function handleRecheck() {
@@ -47,6 +50,18 @@ function handleRecheck() {
 }
 
 function inlineActionFor(entry: HealthEntry): InlineAction | undefined {
+  if (entry.id === "mods") {
+    if (entry.state === "checking") return undefined
+    return {
+      id: MODS_BUTTON_ID,
+      label: "Mods",
+      icon: "pi-box",
+      title: "Ver y elegir los mods",
+      badge: mods.attention,
+      badgeLabel: "(hay algo para revisar)",
+      onClick: () => mods.openPanel(),
+    }
+  }
   if (entry.id !== "gta") return undefined
   if (entry.state === "checking") return undefined
   if (health.gtaInstalling) return undefined
@@ -61,6 +76,15 @@ function inlineActionFor(entry: HealthEntry): InlineAction | undefined {
 }
 
 function actionFor(entry: HealthEntry): ItemAction | undefined {
+  if (entry.id === "mods") {
+    if (mods.failed.length === 0 || mods.working || health.gameRunning) return undefined
+    return {
+      label: "Reintentar",
+      variant: mods.blocking ? "primary" : "secondary",
+      onClick: () => health.retryMods(),
+    }
+  }
+
   if (entry.id === "cache") {
     if (entry.state !== "warning" || !health.cacheRetry) return undefined
     return {
@@ -173,6 +197,15 @@ onMounted(() => {
           :progress="health.gtaInstallProgress"
         />
         <GtaInstallRow
+          v-else-if="entry.id === 'mods' && mods.working"
+          :progress="mods.progress"
+          download-title="Descargando mods"
+          :cancellable="mods.cancellable"
+          :cancelling="mods.cancelling"
+          cancel-title="Deja de instalar los mods opcionales; puedes seguir luego desde Mods."
+          @cancel="mods.cancel()"
+        />
+        <GtaInstallRow
           v-else-if="entry.id === 'cache' && health.cacheInstalling"
           :progress="health.cacheInstallProgress"
           download-title="Descargando caché del servidor"
@@ -189,21 +222,7 @@ onMounted(() => {
           :reserve-subline-space="entry.id === 'server'"
           :action="actionFor(entry)"
           :inline-action="inlineActionFor(entry)"
-        >
-          <template
-            v-if="entry.id === 'gta' && entry.state === 'ok' && health.gtaMods.length > 0"
-            #extras
-          >
-            <div class="flex flex-shrink-0 flex-wrap items-center gap-1.5">
-              <ModChip
-                v-for="mod in health.gtaMods"
-                :id="mod.id"
-                :key="mod.id"
-                :label="mod.label"
-              />
-            </div>
-          </template>
-        </HealthCheckItem>
+        />
       </template>
     </div>
     <GtaPicker
@@ -213,6 +232,7 @@ onMounted(() => {
       @browse="health.browseGameDir"
       @close="health.closeGtaPicker"
     />
+    <ModsPanel :open="mods.panelOpen" @close="mods.closePanel()" />
   </section>
 </template>
 

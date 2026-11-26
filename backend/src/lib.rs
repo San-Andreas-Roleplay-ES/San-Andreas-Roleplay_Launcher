@@ -5,6 +5,7 @@ mod commands;
 mod config;
 mod game;
 mod install;
+mod mods;
 mod net;
 mod store;
 
@@ -26,6 +27,7 @@ pub struct Ctx {
     pub store: store::Store,
     pub manifest: manifest::ManifestCache,
     pub cache: cache::CacheState,
+    pub mods: mods::ModsState,
     pub game: launcher::GameWatch,
     pub window: window::WindowPersist,
     pub updater: updater::UpdaterState,
@@ -75,6 +77,7 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         store: store::Store::open(store_path),
         manifest: manifest::ManifestCache::default(),
         cache: cache::CacheState::default(),
+        mods: mods::ModsState::default(),
         game: launcher::GameWatch::default(),
         window: window::WindowPersist::default(),
         updater: updater::UpdaterState::default(),
@@ -135,10 +138,16 @@ pub fn run() {
             commands::find_game_dirs,
             commands::set_game_dir,
             commands::pick_empty_install_dir,
-            commands::detect_gta_mods,
             commands::install_gta,
             commands::install_cache,
             commands::cancel_cache,
+            commands::check_mods,
+            commands::sync_mods,
+            commands::set_mod_enabled,
+            commands::set_mod_variant,
+            commands::install_recommended_mod,
+            commands::disable_mod_conflicts,
+            commands::cancel_mods,
             commands::window_minimize,
             commands::window_close,
             commands::window_toggle_maximize,

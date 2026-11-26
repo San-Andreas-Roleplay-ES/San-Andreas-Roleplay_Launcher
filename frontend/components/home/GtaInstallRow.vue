@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import type { GtaInstallProgress } from "@/types/gta"
+import { formatBytes } from "@/utils/formatBytes"
 
 const props = withDefaults(
   defineProps<{
@@ -10,19 +11,18 @@ const props = withDefaults(
     cancellable?: boolean
     /** "Omitir" was clicked and the backend is stopping. */
     cancelling?: boolean
+    /** Tooltip of "Omitir". */
+    cancelTitle?: string
   }>(),
-  { downloadTitle: "Descargando GTA San Andreas", cancellable: false, cancelling: false },
+  {
+    downloadTitle: "Descargando GTA San Andreas",
+    cancellable: false,
+    cancelling: false,
+    cancelTitle: "Deja de descargar para jugar ya; el juego descargará lo que falte al entrar.",
+  },
 )
 
 const emit = defineEmits<{ cancel: [] }>()
-
-function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || bytes === null) return ""
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
-}
 
 function formatSpeed(bps: number | undefined): string {
   if (bps === undefined || bps === null) return ""
@@ -189,7 +189,7 @@ const showCancel = computed(
       v-if="showCancel"
       type="button"
       class="inline-flex h-7 min-w-[88px] flex-shrink-0 items-center justify-center rounded-md bg-white/10 px-2.5 text-xs font-bold text-white/90 transition-colors duration-150 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-      title="Deja de descargar para jugar ya; el juego descargará lo que falte al entrar."
+      :title="cancelTitle"
       :disabled="cancelling"
       :aria-busy="cancelling"
       @click="emit('cancel')"

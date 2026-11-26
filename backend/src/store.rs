@@ -4,6 +4,7 @@
 //! longer knows (`installedCacheSize`, `cacheInstallTempDir` from the cache
 //! zip days) are ignored on load and dropped on the next write.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::mods::record::{lenient_entries, Installed, ModPref, SavedCatalog};
 use crate::net::manifest::LauncherManifest;
 
 pub const FILE_NAME: &str = "store.json";
@@ -34,6 +36,19 @@ pub struct StoreData {
     /// against it while the API can't be reached.
     #[serde(default, deserialize_with = "lenient")]
     pub manifest: Option<LauncherManifest>,
+    /// Last accepted mods catalog (text + signature, verified again on
+    /// load): mods keep working from it while the API can't be reached.
+    #[serde(default, deserialize_with = "lenient")]
+    pub mods_catalog: Option<SavedCatalog>,
+    /// Highest catalog `serial` ever accepted: an older one is refused.
+    #[serde(default, deserialize_with = "lenient")]
+    pub mods_serial: Option<u64>,
+    /// What the launcher installed, per game folder (`record::folder_key`).
+    #[serde(default, deserialize_with = "lenient_map")]
+    pub mods_installed: BTreeMap<String, Installed>,
+    /// The user's on/off and variant choices, by mod id.
+    #[serde(default, deserialize_with = "lenient_map")]
+    pub mods_prefs: BTreeMap<String, ModPref>,
 }
 
 /// Window placement in *physical* pixels. `width`/`height` are the inner
@@ -58,6 +73,17 @@ where
 {
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(serde_json::from_value(value).ok())
+}
+
+/// A map whose bad entries are dropped one by one.
+fn lenient_map<'de, D, V>(deserializer: D) -> Result<BTreeMap<String, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: DeserializeOwned,
+{
+    Ok(lenient_entries(serde_json::Value::deserialize(
+        deserializer,
+    )?))
 }
 
 pub struct Store {
@@ -173,9 +199,42 @@ mod tests {
                 "gtaPath": null,
                 "gtaInstallTempDir": null,
                 "windowState": null,
-                "manifest": null
+                "manifest": null,
+                "modsCatalog": null,
+                "modsSerial": null,
+                "modsInstalled": {},
+                "modsPrefs": {}
             })
         );
+    }
+
+    #[test]
+    fn mod_data_survives_bad_entries() {
+        let data: StoreData = serde_json::from_value(json!({
+            "gtaPath": "D:\\GTA",
+            "modsSerial": 7,
+            "modsCatalog": { "catalog": "{}", "signature": "x" },
+            "modsInstalled": {
+                "d:\\gta": { "radar": { "variant": "lq", "version": "1", "files": [] } },
+                "e:\\bad": 5
+            },
+            "modsPrefs": { "radar": { "enabled": false, "variant": "hd" }, "x": "on" }
+        }))
+        .unwrap();
+        assert_eq!(data.mods_serial, Some(7));
+        assert_eq!(data.mods_catalog.unwrap().signature, "x");
+        assert_eq!(data.mods_installed.len(), 1);
+        assert!(data.mods_installed["d:\\gta"].0.contains_key("radar"));
+        assert_eq!(data.mods_prefs.len(), 1);
+        assert!(!data.mods_prefs["radar"].enabled);
+        // Wrong types for the whole maps: empty, the rest intact.
+        let data: StoreData = serde_json::from_value(json!({
+            "gtaPath": "D:\\GTA", "modsInstalled": [], "modsPrefs": null, "modsSerial": "7"
+        }))
+        .unwrap();
+        assert!(data.mods_installed.is_empty() && data.mods_prefs.is_empty());
+        assert_eq!(data.mods_serial, None);
+        assert_eq!(data.gta_path.as_deref(), Some("D:\\GTA"));
     }
 
     #[test]

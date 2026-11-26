@@ -4,7 +4,6 @@ import type { UnlistenFn } from "@tauri-apps/api/event"
 import type { CacheHealth, CacheInstallProgress, CacheInstallResult } from "@/types/cache"
 import type { GameLaunchPayload, GameLaunchResult, GameStatus } from "@/types/game"
 import type {
-  DetectedMod,
   GtaCandidate,
   GtaDetection,
   GtaInstallProgress,
@@ -13,6 +12,7 @@ import type {
 } from "@/types/gta"
 import type { HealthCheckPayload } from "@/types/health"
 import type { LauncherManifest } from "@/types/manifest"
+import type { ModsHealth, ModsProgress, ModsSyncResult } from "@/types/mods"
 import type { GlobalMetrics, RawServerEvent } from "@/types/public"
 import type { InstallProgress, InstallResult, SampVerificationResult } from "@/types/samp"
 import type { PingResult } from "@/types/server"
@@ -96,7 +96,35 @@ export const launcher = {
 
   pickEmptyInstallDir: () => invoke<PickGameDirResult>("pick_empty_install_dir"),
 
-  detectGtaMods: () => invoke<DetectedMod[]>("detect_gta_mods"),
+  /** The catalog's mods and their state in the game folder. `force` fetches
+   *  the catalog again. Never rejects. */
+  checkMods: (options: { force?: boolean } = {}) =>
+    invoke<ModsHealth>("check_mods", { force: options.force ?? false }),
+
+  /** The automatic flow: required mods, defaults, updates and repairs.
+   *  `retry` also retries the mods that failed this session. */
+  syncMods: (options: { retry?: boolean } = {}) =>
+    invoke<ModsSyncResult>("sync_mods", { retry: options.retry ?? false }),
+
+  /** Turns an optional mod on (installs it and what it needs) or off
+   *  (removes our files). */
+  setModEnabled: (id: string, enabled: boolean) =>
+    invoke<ModsSyncResult>("set_mod_enabled", { id, enabled }),
+
+  setModVariant: (id: string, variant: string) =>
+    invoke<ModsSyncResult>("set_mod_variant", { id, variant }),
+
+  /** "Instalar versión recomendada" over an install made by other means. */
+  installRecommendedMod: (id: string) => invoke<ModsSyncResult>("install_recommended_mod", { id }),
+
+  /** Renames the installs that clash with the mod out of the way (reversible). */
+  disableModConflicts: (id: string) => invoke<ModsSyncResult>("disable_mod_conflicts", { id }),
+
+  /** Stops the running mods install; `false` when none was running. */
+  cancelMods: () => invoke<boolean>("cancel_mods"),
+
+  onModsProgress: (callback: (progress: ModsProgress) => void) =>
+    subscribe("mods:install:progress", callback),
 
   installGta: (targetDir: string) => invoke<GtaInstallResult>("install_gta", { targetDir }),
 

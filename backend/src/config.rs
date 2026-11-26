@@ -21,6 +21,10 @@ pub const CACHE_FOLDER: &str = env!("VITE_GAME_CACHE_FOLDER");
 /// no updater, the `DEV_*` overrides honoured.
 pub const IS_DEV: bool = cfg!(debug_assertions);
 
+/// The updater's minisign public key (`plugins.updater.pubkey` in
+/// tauri.conf.json: base64 of the key file), baked by `build.rs`.
+const UPDATER_PUBKEY: &str = env!("SARP_UPDATER_PUBKEY");
+
 /// A `DEV_*` setting, debug builds only. A value in the process environment
 /// wins over the one baked from `.env`.
 fn dev_setting(key: &str, baked: Option<&str>) -> Option<String> {
@@ -50,6 +54,20 @@ pub fn dev_cache_dir() -> Option<PathBuf> {
 pub fn dev_gta_candidates() -> Option<Vec<PathBuf>> {
     dev_setting("DEV_GTA_CANDIDATES", option_env!("SARP_DEV_GTA_CANDIDATES"))
         .map(|raw| split_list(&raw))
+}
+
+/// The key the mods catalog must be signed with: the updater's, the one the
+/// release installers are signed with. Debug builds take `DEV_MODS_PUBKEY`
+/// instead when set (the key itself, or the path of a file holding it), so QA
+/// can sign test catalogs with a throwaway key.
+pub fn mods_pubkey() -> String {
+    let Some(dev) = dev_setting("DEV_MODS_PUBKEY", option_env!("SARP_DEV_MODS_PUBKEY")) else {
+        return UPDATER_PUBKEY.to_string();
+    };
+    match std::fs::read_to_string(&dev) {
+        Ok(text) => text.trim().to_string(),
+        Err(_) => dev,
+    }
 }
 
 fn split_list(raw: &str) -> Vec<PathBuf> {

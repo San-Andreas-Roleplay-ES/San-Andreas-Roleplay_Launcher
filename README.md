@@ -7,7 +7,7 @@
 ![Discord Shield](https://discord.com/api/guilds/1118327104908570654/widget.png?style=shield)
 [![License: MIT](https://img.shields.io/badge/License-MIT%20License-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Launcher oficial del servidor SAMP de [San Andreas Roleplay](https://sarp.es). Verifica la instalación de GTA SA, instala SA:MP, mantiene al día el caché de modelos del servidor (con el paquete completo si falta mucho, y si no solo los archivos que faltan; pensado también para conexiones malas) y lanza el juego en el servidor oficial.
+Launcher oficial del servidor SAMP de [San Andreas Roleplay](https://sarp.es). Verifica la instalación de GTA SA, instala SA:MP, instala y mantiene los mods del servidor (los esenciales solos; los opcionales, como el radar, a elección del jugador desde el botón _Mods_), mantiene al día el caché de modelos del servidor (con el paquete completo si falta mucho, y si no solo los archivos que faltan; pensado también para conexiones malas) y lanza el juego en el servidor oficial.
 
 ## Para jugadores
 
@@ -26,7 +26,9 @@ App de escritorio [Tauri 2](https://tauri.app): frontend Vue 3 + Vite en `fronte
 
 > El repo vive en OneDrive, así que `backend/.cargo/config.toml` manda los artefactos de cargo a `C:\tmp\sarp-target` para no sincronizarlos.
 
-Copiá `.env.example` a `.env` y completá `LAUNCHER_KEY` (la misma que la API). En dev el launcher habla con la API local (`DEV_API_URL`, por defecto `http://localhost:3333`); para probar el caché sin tocar la carpeta real, definí `DEV_CACHE_DIR`, y para probar la detección automática de GTA sin que adopte una instalación real, `DEV_GTA_CANDIDATES` (carpetas separadas por `;`; un `;` solo = "no se encontró nada").
+Copiá `.env.example` a `.env` y completá `LAUNCHER_KEY` (la misma que la API). En dev el launcher habla con la API local (`DEV_API_URL`, por defecto `http://localhost:3333`); para probar el caché sin tocar la carpeta real, definí `DEV_CACHE_DIR`, y para probar la detección automática de GTA sin que adopte una instalación real, `DEV_GTA_CANDIDATES` (carpetas separadas por `;`; un `;` solo = "no se encontró nada"). Para probar mods con un catálogo firmado con una clave de prueba (`yarn tauri signer generate`), `DEV_MODS_PUBKEY` (la clave pública, o la ruta de un archivo que la tenga).
+
+> **Ojo con los mods en dev**: si el store del launcher apunta a tu carpeta real de GTA y la API publica un catálogo, `yarn dev` instala los mods esenciales y los opcionales por defecto **en esa carpeta**. Para probar, usá una carpeta de GTA falsa (`DEV_GTA_CANDIDATES` con un store que no tenga `gtaPath`).
 
 ```bash
 yarn install
@@ -50,7 +52,7 @@ Los updates van **firmados con minisign**. La clave pública está en [backend/t
 
 ### Requisitos de la API
 
-El launcher lee el manifest, las métricas, los eventos y la lista del caché de `VITE_API_URL` (`https://api.gta-rol.com`), en `/api/public/launcher/*`, con el header `X-Launcher-Key`. Antes de publicar un launcher que dependa de esos endpoints, la API tiene que tenerlos en producción con la misma `LAUNCHER_KEY` que el `.env` del build:
+El launcher lee el manifest, las métricas, los eventos, la lista del caché y el catálogo de mods de `VITE_API_URL` (`https://api.gta-rol.com`), en `/api/public/launcher/*`, con el header `X-Launcher-Key`. Antes de publicar un launcher que dependa de esos endpoints, la API tiene que tenerlos en producción con la misma `LAUNCHER_KEY` que el `.env` del build:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -H "X-Launcher-Key: <clave>" https://api.gta-rol.com/api/public/launcher/manifest   # 200
@@ -61,6 +63,9 @@ Si la API no responde (caída, reiniciando, o responde 401/404), Jugar sigue hab
 
 - **SA:MP** se verifica contra el último manifest bueno, que el launcher guarda en su store cada vez que lo obtiene. En una instalación que nunca lo obtuvo, si `samp.exe` está en la carpeta la fila queda en "no se pudo verificar" (aviso ámbar, no bloquea); si falta, sí bloquea, porque tampoco se puede instalar sin la API.
 - **El caché** queda en "no se pudo verificar" (no bloquea Jugar, no descarga ni borra nada). Lo mismo mientras la lista del caché esté vacía (antes de la primera publicación de archivos al bucket). El caché solo bloquea Jugar mientras se sincroniza, y el jugador puede cortarlo con _"Omitir"_; si algunos archivos no se pueden bajar, el juego los descarga al entrar.
+- **Los mods** siguen con el último catálogo aceptado (guardado en el store y verificado de nuevo al usarlo); sin ninguno, la fila de Mods avisa y no instala nada. Un mod esencial solo bloquea Jugar si su instalación falló (la fila dice por qué y ofrece _"Reintentar"_) o mientras se instala.
+
+El catálogo de mods (`/api/public/launcher/mods` → `{ catalog, signature }`) va **firmado con la misma clave minisign que los updates**: se firma con `yarn tauri signer sign` y el launcher rechaza cualquier catálogo que no verifique con `plugins.updater.pubkey`, o con un `serial` menor al último aceptado. Publicar mods nuevos o versiones nuevas no requiere publicar el launcher; un mod con `minLauncher` mayor a la versión instalada queda como "no disponible" hasta que el launcher se actualice. Detalles en [CLAUDE.md](CLAUDE.md#mods).
 
 La lista del caché puede traer `zip: { url, bytes }` (el caché entero en un zip del CDN). Un launcher al que le falta más de lo que pesa el zip lo baja primero (reanudable, también entre reinicios) y después baja sueltos solo los archivos que el zip no tenía; con `zip: null`, o con una API que todavía no manda el campo, sincroniza archivo por archivo como siempre. Detalles en [CLAUDE.md](CLAUDE.md#caché-del-servidor).
 

@@ -25,6 +25,12 @@ export interface InlineAction {
   /** PrimeIcons class, e.g. "pi-folder-open". */
   icon?: string
   title?: string
+  /** A small dot on the button: something behind it needs a look. */
+  badge?: boolean
+  /** Spoken after the label when `badge` is on. */
+  badgeLabel?: string
+  /** DOM id, for a dialog that gives focus back to it. */
+  id?: string
   onClick: () => void
 }
 
@@ -124,13 +130,25 @@ const actionProgressFillClass = computed(() =>
     </div>
     <button
       v-if="inlineAction"
+      :id="inlineAction.id"
       type="button"
-      class="mt-0.5 inline-flex h-7 flex-shrink-0 items-center gap-1.5 rounded-md border border-white/15 bg-transparent px-2.5 text-xs font-medium text-white/70 transition-colors duration-150 hover:border-white/30 hover:bg-white/[0.04] hover:text-white/95"
+      class="relative mt-0.5 inline-flex h-7 flex-shrink-0 items-center gap-1.5 rounded-md border border-white/15 bg-transparent px-2.5 text-xs font-medium text-white/70 transition-colors duration-150 hover:border-white/30 hover:bg-white/[0.04] hover:text-white/95 focus-visible:border-amber-400/60 focus-visible:outline-none"
       :title="inlineAction.title ?? inlineAction.label"
       @click="inlineAction.onClick"
     >
-      <i v-if="inlineAction.icon" class="pi text-[11px]" :class="inlineAction.icon" />
+      <i
+        v-if="inlineAction.icon"
+        class="pi text-[11px]"
+        :class="inlineAction.icon"
+        aria-hidden="true"
+      />
       <span class="leading-none">{{ inlineAction.label }}</span>
+      <span v-if="inlineAction.badge" class="sr-only">{{ inlineAction.badgeLabel }}</span>
+      <span
+        v-if="inlineAction.badge"
+        class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-neutral-950"
+        aria-hidden="true"
+      />
     </button>
     <button
       v-if="action"

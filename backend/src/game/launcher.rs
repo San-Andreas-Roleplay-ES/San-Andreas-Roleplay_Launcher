@@ -162,6 +162,13 @@ pub fn launch(app: &AppHandle, host: &str, port: u16) -> GameLaunchResult {
     if ctx.cache.is_syncing() {
         return GameLaunchResult::error("Espera a que termine de actualizarse el caché.");
     }
+    // Mod files are being written, or a required one could not be installed.
+    if ctx.mods.is_busy() {
+        return GameLaunchResult::error("Espera a que terminen de instalarse los mods.");
+    }
+    if ctx.mods.is_blocking() {
+        return GameLaunchResult::error("Falta un mod esencial: reintenta su instalación en Mods.");
+    }
     let Some(dir) = game_dir(&ctx.store) else {
         return GameLaunchResult::error("Elige primero la carpeta de GTA San Andreas");
     };

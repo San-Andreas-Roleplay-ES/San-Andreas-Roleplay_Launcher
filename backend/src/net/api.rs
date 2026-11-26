@@ -15,6 +15,7 @@ pub const MANIFEST: &str = "/api/public/launcher/manifest";
 pub const CACHE: &str = "/api/public/launcher/cache";
 pub const GLOBAL_METRICS: &str = "/api/public/launcher/global-metrics";
 pub const EVENTS: &str = "/api/public/launcher/events";
+pub const MODS: &str = "/api/public/launcher/mods";
 
 const KEY_HEADER: &str = "X-Launcher-Key";
 /// Metrics and events: small, and the UI only waits for them in the background.
@@ -46,6 +47,22 @@ impl Api {
     /// wait for the response; the body may take as long as it keeps arriving
     /// (the cache list is a few hundred KB, minutes on a bad line).
     pub async fn get(&self, path: &str, timeout: Duration) -> Result<Value, String> {
+        let body = self.body(path, timeout).await?;
+        payload(&body).inspect_err(|_| log::warn!("API {path}: unexpected body"))
+    }
+
+    /// Like [`Self::get`], for endpoints where "nothing" is an answer: an
+    /// envelope without a `payload` (the API drops falsy keys) is `None`.
+    pub async fn get_optional(
+        &self,
+        path: &str,
+        timeout: Duration,
+    ) -> Result<Option<Value>, String> {
+        let body = self.body(path, timeout).await?;
+        optional_payload(&body).inspect_err(|_| log::warn!("API {path}: unexpected body"))
+    }
+
+    async fn body(&self, path: &str, timeout: Duration) -> Result<Vec<u8>, String> {
         let url = format!("{}{path}", self.base);
         let response = tokio::time::timeout(
             timeout,
@@ -72,10 +89,9 @@ impl Api {
                 "El servidor respondió con un error (HTTP {status})."
             ));
         }
-        let body = read_body(response, BODY_STALL)
+        read_body(response, BODY_STALL)
             .await
-            .inspect_err(|error| log::warn!("API {path}: body: {error}"))?;
-        payload(&body).inspect_err(|_| log::warn!("API {path}: unexpected body"))
+            .inspect_err(|error| log::warn!("API {path}: body: {error}"))
     }
 
     /// Counters for the header (`onlineAccountCounter`, ...), passed through.
@@ -102,11 +118,20 @@ impl Api {
 /// Unwraps `{ message, httpCode, source, payload }`. The API drops falsy keys
 /// from the envelope, so a missing `payload` means there was none.
 pub fn payload(body: &[u8]) -> Result<Value, String> {
+    optional_payload(body)?.ok_or_else(|| BAD_RESPONSE.into())
+}
+
+/// The envelope's `payload`, `None` when it has none. Not an envelope at all
+/// (not a JSON object) is an error.
+pub fn optional_payload(body: &[u8]) -> Result<Option<Value>, String> {
     let mut envelope: Value = serde_json::from_slice(body).map_err(|_| BAD_RESPONSE)?;
-    match envelope.get_mut("payload").map(Value::take) {
-        Some(payload) if !payload.is_null() => Ok(payload),
-        _ => Err(BAD_RESPONSE.into()),
+    if !envelope.is_object() {
+        return Err(BAD_RESPONSE.into());
     }
+    Ok(envelope
+        .get_mut("payload")
+        .map(Value::take)
+        .filter(|payload| !payload.is_null()))
 }
 
 #[cfg(test)]
@@ -132,6 +157,25 @@ pub(crate) mod tests {
             b"",
         ] {
             assert_eq!(payload(body).unwrap_err(), BAD_RESPONSE);
+        }
+    }
+
+    #[test]
+    fn an_envelope_without_payload_is_none_where_that_is_an_answer() {
+        assert_eq!(
+            optional_payload(br#"{"message":"OK","httpCode":200}"#).unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_payload(br#"{"message":"OK","payload":null}"#).unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_payload(br#"{"payload":{"catalog":null}}"#).unwrap(),
+            Some(json!({ "catalog": null }))
+        );
+        for body in [&b"[1]"[..], b"<html>", b"", b"\"x\""] {
+            assert_eq!(optional_payload(body).unwrap_err(), BAD_RESPONSE);
         }
     }
 
@@ -172,7 +216,7 @@ pub(crate) mod tests {
     async fn real_api_requires_the_key() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let base = crate::config::api_url();
-        for path in [MANIFEST, CACHE, GLOBAL_METRICS, EVENTS] {
+        for path in [MANIFEST, CACHE, GLOBAL_METRICS, EVENTS, MODS] {
             let status = crate::net::http::strict_client("test")
                 .get(format!("{base}{path}"))
                 .send()
