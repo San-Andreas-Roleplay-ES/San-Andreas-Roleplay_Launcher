@@ -19,6 +19,7 @@ use zip::ZipArchive;
 use super::{temp_name, with_writable, Entry, ZipInfo, PROGRESS_THROTTLE};
 use crate::install::cancel::Cancel;
 use crate::install::progress::{percent, Phase, Progress, Reporter};
+use crate::rwguard::CacheGuard;
 
 /// Under `%TEMP%`.
 pub const DIR_NAME: &str = "sarp-cache-zip";
@@ -96,6 +97,8 @@ pub struct Unpacked {
     /// Picked entries that did not make it (read error, size or CRC not
     /// matching the name, rename refused). File by file gets them.
     pub bad: usize,
+    /// Picked entries rejected by RWGuard before landing in the cache folder.
+    pub blocked: usize,
 }
 
 /// The base name of a zip entry (`<wrapper>/0xA.dff` → `0xA.dff`). Nothing
@@ -150,6 +153,7 @@ pub fn extract(
     missing: &[Entry],
     report: &Reporter,
     cancel: &Cancel,
+    guard: Option<&CacheGuard>,
 ) -> Result<Unpacked, String> {
     let file = File::open(zip).map_err(|e| format!("open: {e}"))?;
     let mut archive = ZipArchive::new(BufReader::new(file)).map_err(|e| format!("zip: {e}"))?;
@@ -199,10 +203,18 @@ pub fn extract(
             &mut buf,
             cancel,
             &mut meter,
+            guard,
         ) {
             Ok(()) => unpacked.written += 1,
-            Err(_) if cancel.is_cancelled() => break,
-            Err(error) => {
+            Err(UnpackErr::Cancelled) => break,
+            Err(UnpackErr::Blocked(reason)) => {
+                log::warn!(
+                    "cache package: {} blocked by RWGuard: {reason}",
+                    target.name
+                );
+                unpacked.blocked += 1;
+            }
+            Err(UnpackErr::Other(error)) => {
                 log::warn!("cache package: {} not unpacked: {error}", target.name);
                 unpacked.bad += 1;
             }
@@ -215,6 +227,13 @@ pub fn extract(
     Ok(unpacked)
 }
 
+enum UnpackErr {
+    Cancelled,
+    Blocked(String),
+    Other(String),
+}
+
+#[allow(clippy::too_many_arguments)]
 fn unpack<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     index: usize,
@@ -223,11 +242,14 @@ fn unpack<R: Read + Seek>(
     buf: &mut [u8],
     cancel: &Cancel,
     meter: &mut Meter<'_>,
-) -> Result<(), String> {
-    let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
+    guard: Option<&CacheGuard>,
+) -> Result<(), UnpackErr> {
+    let mut entry = archive
+        .by_index(index)
+        .map_err(|e| UnpackErr::Other(e.to_string()))?;
     let temp = dir.join(temp_name(&target.name));
     let result = (|| {
-        let io = |e: io::Error| e.to_string();
+        let io = |e: io::Error| UnpackErr::Other(e.to_string());
         let file = File::options()
             .write(true)
             .create_new(true)
@@ -238,15 +260,20 @@ fn unpack<R: Read + Seek>(
         let mut written = 0u64;
         loop {
             if cancel.is_cancelled() {
-                return Err("cancelled".to_string());
+                return Err(UnpackErr::Cancelled);
             }
-            let n = entry.read(buf).map_err(|e| format!("inflate: {e}"))?;
+            let n = entry
+                .read(buf)
+                .map_err(|e| UnpackErr::Other(format!("inflate: {e}")))?;
             if n == 0 {
                 break;
             }
             written += n as u64;
             if written > target.size {
-                return Err(format!("more than the listed {} bytes", target.size));
+                return Err(UnpackErr::Other(format!(
+                    "more than the listed {} bytes",
+                    target.size
+                )));
             }
             crc.update(&buf[..n]);
             writer.write_all(&buf[..n]).map_err(io)?;
@@ -256,14 +283,29 @@ fn unpack<R: Read + Seek>(
         writer.flush().map_err(io)?;
         drop(writer);
         if written != target.size {
-            return Err(format!("{written} of {} bytes", target.size));
+            return Err(UnpackErr::Other(format!(
+                "{written} of {} bytes",
+                target.size
+            )));
         }
         let actual = crc.finalize();
         if actual != target.crc {
-            return Err(format!("content CRC {actual:X} does not match the name"));
+            return Err(UnpackErr::Other(format!(
+                "content CRC {actual:X} does not match the name"
+            )));
+        }
+        if let Some(guard) = guard {
+            guard
+                .validate_temp(&temp, &target.name, target.size)
+                .map_err(UnpackErr::Blocked)?;
         }
         let path = dir.join(&target.name);
-        with_writable(&path, || fs::rename(&temp, &path)).map_err(|e| format!("rename: {e}"))
+        with_writable(&path, || fs::rename(&temp, &path))
+            .map_err(|e| UnpackErr::Other(format!("rename: {e}")))?;
+        if let Some(guard) = guard {
+            guard.record_landed(&path, &target.name, target.size);
+        }
+        Ok(())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temp);
@@ -411,8 +453,15 @@ pub(crate) mod tests {
         let events: Arc<Mutex<Vec<Progress>>> = Arc::default();
         let sink = events.clone();
         let report: Reporter = Arc::new(move |p| sink.lock().unwrap().push(p));
-        let unpacked = extract(&zip, &cache, &missing, &report, &Cancel::default()).unwrap();
-        assert_eq!(unpacked, Unpacked { written: 3, bad: 0 });
+        let unpacked = extract(&zip, &cache, &missing, &report, &Cancel::default(), None).unwrap();
+        assert_eq!(
+            unpacked,
+            Unpacked {
+                written: 3,
+                bad: 0,
+                blocked: 0,
+            }
+        );
 
         assert_eq!(fs::read(cache.join(&na)).unwrap(), a);
         assert_eq!(fs::read(cache.join(&nb)).unwrap(), b);
@@ -469,8 +518,23 @@ pub(crate) mod tests {
         let zip = root.path().join("damaged.zip");
         fs::write(&zip, damaged).unwrap();
         let missing = vec![entry(&name, body.len() as u64)];
-        let unpacked = extract(&zip, root.path(), &missing, &quiet(), &Cancel::default()).unwrap();
-        assert_eq!(unpacked, Unpacked { written: 0, bad: 1 });
+        let unpacked = extract(
+            &zip,
+            root.path(),
+            &missing,
+            &quiet(),
+            &Cancel::default(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            unpacked,
+            Unpacked {
+                written: 0,
+                bad: 1,
+                blocked: 0,
+            }
+        );
         assert!(!root.path().join(&name).exists());
         let left: Vec<_> = fs::read_dir(root.path())
             .unwrap()
@@ -484,13 +548,14 @@ pub(crate) mod tests {
         let root = tempfile::tempdir().unwrap();
         let zip = root.path().join("junk.zip");
         fs::write(&zip, vec![0x55u8; 10_000]).unwrap();
-        assert!(extract(&zip, root.path(), &[], &quiet(), &Cancel::default()).is_err());
+        assert!(extract(&zip, root.path(), &[], &quiet(), &Cancel::default(), None).is_err());
         assert!(extract(
             &root.path().join("missing.zip"),
             root.path(),
             &[],
             &quiet(),
-            &Cancel::default()
+            &Cancel::default(),
+            None,
         )
         .is_err());
     }
@@ -532,7 +597,7 @@ pub(crate) mod tests {
         // Cancelled from another thread as soon as the first file lands.
         let cancel = Cancel::default();
         let unpacked = std::thread::scope(|scope| {
-            let worker = scope.spawn(|| extract(&zip, &cache, &missing, &quiet(), &cancel));
+            let worker = scope.spawn(|| extract(&zip, &cache, &missing, &quiet(), &cancel, None));
             while !worker.is_finished() {
                 let any = fs::read_dir(&cache)
                     .unwrap()
@@ -565,7 +630,7 @@ pub(crate) mod tests {
         fs::create_dir_all(&cache2).unwrap();
         let stop = Cancel::default();
         stop.cancel();
-        let none = extract(&zip, &cache2, &missing, &quiet(), &stop).unwrap();
+        let none = extract(&zip, &cache2, &missing, &quiet(), &stop, None).unwrap();
         assert_eq!(none, Unpacked::default());
         assert_eq!(fs::read_dir(&cache2).unwrap().count(), 0);
 
@@ -575,7 +640,7 @@ pub(crate) mod tests {
             .filter(|e| !on_disk.contains(&e.name))
             .cloned()
             .collect();
-        let second = extract(&zip, &cache, &rest, &quiet(), &Cancel::default()).unwrap();
+        let second = extract(&zip, &cache, &rest, &quiet(), &Cancel::default(), None).unwrap();
         assert_eq!(second.written + unpacked.written, total as usize);
         assert_eq!(fs::read_dir(&cache).unwrap().count(), total as usize);
     }

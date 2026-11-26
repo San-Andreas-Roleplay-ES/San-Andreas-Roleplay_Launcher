@@ -16,6 +16,7 @@ import type { ModsHealth, ModsProgress, ModsSyncResult } from "@/types/mods"
 import type { GlobalMetrics, RawServerEvent } from "@/types/public"
 import type { InstallProgress, InstallResult, SampVerificationResult } from "@/types/samp"
 import type { PingResult } from "@/types/server"
+import type { RwGuardActionResult, RwGuardProgress, RwGuardStatus } from "@/types/rwguard"
 import type { UpdaterAvailable, UpdaterDownloaded, UpdaterProgress } from "@/types/updater"
 import type { WindowState } from "@/types/window"
 
@@ -141,6 +142,28 @@ export const launcher = {
 
   onCacheInstallProgress: (callback: (progress: CacheInstallProgress) => void) =>
     subscribe("cache:install:progress", callback),
+
+  /** Current RWGuard validation summary, threats and recent history. */
+  rwguardStatus: () => invoke<RwGuardStatus>("rwguard_status"),
+
+  /** Scans the server cache folder with RWGuard; skips unchanged models in
+   *  history unless `force` is true. */
+  rwguardScan: (options: { force?: boolean } = {}) =>
+    invoke<RwGuardStatus>("rwguard_scan", { force: options.force ?? false }),
+
+  /** Repairs one flagged model (or all active threats when omitted). */
+  rwguardHeal: (fileName?: string) =>
+    invoke<RwGuardActionResult>("rwguard_heal", { fileName: fileName ?? null }),
+
+  /** Deletes one flagged model (or all active threats) and clears blocked notices. */
+  rwguardDelete: (fileName?: string) =>
+    invoke<RwGuardActionResult>("rwguard_delete", { fileName: fileName ?? null }),
+
+  onRwGuardProgress: (callback: (progress: RwGuardProgress) => void) =>
+    subscribe("rwguard:progress", callback),
+
+  onRwGuardStatusChanged: (callback: (status: RwGuardStatus) => void) =>
+    subscribe("rwguard:status:changed", callback),
 
   minimize: () => invoke<void>("window_minimize"),
 

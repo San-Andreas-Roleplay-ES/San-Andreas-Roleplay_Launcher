@@ -228,6 +228,7 @@ fn job<'a>(
         package_dir: &f.package_dir,
         package_limits: crate::net::http::tests::fast(),
         file_limits: file_limits(),
+        guard: None,
     }
 }
 
@@ -1005,7 +1006,7 @@ async fn list_comes_from_the_api_with_the_key_and_is_cached() {
     let (report, _) = collector();
     let cancel = Cancel::default();
     let package_dir = package::dir(tmp.path());
-    let job = Job::new(api.client(), &report, &cancel, &package_dir);
+    let job = Job::new(api.client(), &report, &cancel, &package_dir, None);
     let summary = sync(&job, list, &tmp.path().join("cache")).await.unwrap();
     // 1234 bytes missing against a 99,999-byte zip: file by file.
     assert_eq!((summary.downloaded, summary.package), (1, false));
@@ -1080,6 +1081,82 @@ async fn api_errors_are_not_cached_and_never_reach_the_folder() {
         state.list(&api).await.unwrap_err(),
         "El servidor respondió con un error (HTTP 401)."
     );
+}
+
+#[tokio::test]
+async fn rwguard_validates_existing_cache_and_blocks_unsafe_downloads_concurrently() {
+    use crate::rwguard::history::{self, RwGuardHistory};
+    use crate::rwguard::scanner::rw;
+    use crate::rwguard::scanner::tests::{build_dff, build_txd};
+
+    let server = TestServer::start().await;
+    let existing_good = build_dff(rw::ATOMIC, rw::ATOMIC_STRUCT_MAX);
+    let download_good = build_txd(4, 16, 16, 16, 0x08, rw::D3DFMT_DXT1, 128);
+    let download_bad = build_dff(rw::ATOMIC, rw::ATOMIC_STRUCT_MAX + 64);
+
+    let name_existing = format!("0x{:X}.dff", crc32fast::hash(&existing_good));
+    let name_good = format!("0x{:X}.txd", crc32fast::hash(&download_good));
+    let name_bad = format!("0x{:X}.dff", crc32fast::hash(&download_bad));
+
+    server.put(&format!("/files/{name_existing}"), existing_good.clone());
+    server.put(&format!("/files/{name_good}"), download_good.clone());
+    server.put(&format!("/files/{name_bad}"), download_bad.clone());
+
+    let list = Arc::new(CacheList {
+        base_url: format!("{}/files", server.base),
+        files: vec![
+            tests::entry(&name_existing, existing_good.len() as u64),
+            tests::entry(&name_good, download_good.len() as u64),
+            tests::entry(&name_bad, download_bad.len() as u64),
+        ],
+        zip_uploaded_at: Some(SystemTime::now()),
+        zip: None,
+        rejected: 0,
+    });
+
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("cache");
+    let package_dir = package::dir(&tmp.path().join("temp"));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join(&name_existing), &existing_good).unwrap();
+
+    let hist = Arc::new(RwGuardHistory::open(tmp.path().join(history::FILE_NAME)));
+    let guard = Arc::new(CacheGuard::new(hist.clone(), &dir, Arc::new(|_| {})));
+    let (report, _) = collector();
+    let client = client();
+    let cancel = Cancel::default();
+    let job = Job {
+        client: &client,
+        report: &report,
+        cancel: &cancel,
+        package_dir: &package_dir,
+        package_limits: crate::net::http::tests::fast(),
+        file_limits: file_limits(),
+        guard: Some(guard.clone()),
+    };
+
+    let summary = sync(&job, list, &dir).await.unwrap();
+    let (reused, newly, live, blocked) = guard.finish();
+
+    assert_eq!(summary.downloaded, 1);
+    assert_eq!(summary.blocked, 1);
+    assert_eq!(summary.failed, 0);
+    assert_eq!((reused, newly, live, blocked), (0, 2, 1, 1));
+    assert!(dir.join(&name_good).exists());
+    assert!(
+        !dir.join(&name_bad).exists(),
+        "unsafe model must not land in cache"
+    );
+    assert_eq!(
+        server.hits(&format!("/files/{name_bad}")),
+        1,
+        "blocked models are not retried"
+    );
+
+    // Next incremental scan reuses both validated models with zero new scans.
+    let follow = rwguard::scan_dir_incremental(&hist, &dir, false, None).unwrap();
+    assert_eq!(follow.reused, 2);
+    assert_eq!(follow.newly_scanned, 0);
 }
 
 // ---- Contract test against the running API (`cargo test -- --ignored`).

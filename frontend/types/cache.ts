@@ -17,6 +17,8 @@ export interface CacheInstallResult {
   error?: string
   /** Listed files that could not be downloaded (or were never tried). */
   failed: number
+  /** Models blocked by RWGuard before landing in the cache folder. */
+  blocked?: number
   /** The user stopped it (`launcher.cancelCache()`). What it got stays; the
    *  next run continues from there. */
   cancelled?: boolean

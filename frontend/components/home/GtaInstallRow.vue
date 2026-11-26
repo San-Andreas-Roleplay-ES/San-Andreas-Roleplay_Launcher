@@ -13,12 +13,18 @@ const props = withDefaults(
     cancelling?: boolean
     /** Tooltip of "Omitir". */
     cancelTitle?: string
+    /** Live RWGuard validation badge shown alongside download/extract progress. */
+    guardBadge?: string | null
+    /** Highlights the RWGuard badge in amber when a model was blocked/flagged. */
+    guardWarning?: boolean
   }>(),
   {
     downloadTitle: "Descargando GTA San Andreas",
     cancellable: false,
     cancelling: false,
     cancelTitle: "Deja de descargar para jugar ya; el juego descargará lo que falte al entrar.",
+    guardBadge: null,
+    guardWarning: false,
   },
 )
 
@@ -41,7 +47,7 @@ const title = computed(() => {
     case "download":
       return props.progress?.message ?? props.downloadTitle
     case "verify":
-      return "Verificando archivo..."
+      return props.progress?.message ?? "Verificando archivo..."
     case "extract":
       return props.progress?.message ?? "Extrayendo archivos..."
     case "shortcut":
@@ -183,6 +189,14 @@ const showCancel = computed(
         >
           {{ subStat }}
         </span>
+      </div>
+      <div
+        v-if="guardBadge"
+        class="inline-flex items-center gap-1.5 text-[11px] leading-none"
+        :class="guardWarning ? 'text-amber-300/90' : 'text-emerald-300/80'"
+      >
+        <i class="pi pi-shield text-[10px]" aria-hidden="true" />
+        <span class="truncate">{{ guardBadge }}</span>
       </div>
     </div>
     <button

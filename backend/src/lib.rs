@@ -7,6 +7,7 @@ mod game;
 mod install;
 mod mods;
 mod net;
+mod rwguard;
 mod store;
 
 use tauri::{AppHandle, Manager, RunEvent};
@@ -27,6 +28,7 @@ pub struct Ctx {
     pub store: store::Store,
     pub manifest: manifest::ManifestCache,
     pub cache: cache::CacheState,
+    pub rwguard: rwguard::RwGuardState,
     pub mods: mods::ModsState,
     pub game: launcher::GameWatch,
     pub window: window::WindowPersist,
@@ -68,7 +70,9 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let version = app.package_info().version.to_string();
     log::info!("SARP launcher {version} starting");
-    let store_path = app.path().app_config_dir()?.join(store::FILE_NAME);
+    let config_dir = app.path().app_config_dir()?;
+    let store_path = config_dir.join(store::FILE_NAME);
+    let rwguard_history_path = config_dir.join(rwguard::history::FILE_NAME);
     let api_url = config::api_url();
     log::info!("API at {api_url}");
     app.manage(Ctx {
@@ -77,6 +81,9 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         store: store::Store::open(store_path),
         manifest: manifest::ManifestCache::default(),
         cache: cache::CacheState::default(),
+        rwguard: rwguard::RwGuardState::new(rwguard::history::RwGuardHistory::open(
+            rwguard_history_path,
+        )),
         mods: mods::ModsState::default(),
         game: launcher::GameWatch::default(),
         window: window::WindowPersist::default(),
@@ -141,6 +148,10 @@ pub fn run() {
             commands::install_gta,
             commands::install_cache,
             commands::cancel_cache,
+            commands::rwguard_status,
+            commands::rwguard_scan,
+            commands::rwguard_heal,
+            commands::rwguard_delete,
             commands::check_mods,
             commands::sync_mods,
             commands::set_mod_enabled,

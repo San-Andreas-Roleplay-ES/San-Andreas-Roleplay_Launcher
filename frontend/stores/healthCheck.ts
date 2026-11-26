@@ -4,6 +4,7 @@ import { launcher } from "@/api/launcher"
 import { useServerPing } from "@/composables/useServerPing"
 import { useDialogStore } from "@/stores/dialog"
 import { useModsStore } from "@/stores/mods"
+import { useRwGuardStore } from "@/stores/rwguard"
 import type { CacheHealth, CacheInstallProgress, CacheInstallResult } from "@/types/cache"
 import type { GtaCandidate, GtaInstallProgress } from "@/types/gta"
 import type { InstallProgress, SampVerificationResult } from "@/types/samp"
@@ -110,6 +111,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
   // next launch. After a skipped one ("Omitir"), only by "Continuar" or the
   // next launch.
   const cacheSync = shallowRef<CacheInstallResult | null>(null)
+  const lastCacheHealth = shallowRef<CacheHealth | null>(null)
   // Mirror of the OS-level "gta_sa.exe is alive" status. While the game is
   // running we suppress every automatic health re-check and every cache
   // re-download, so we don't fight the game for disk and bandwidth.
@@ -117,6 +119,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
   const serverPing = useServerPing()
   const dialog = useDialogStore()
   const mods = useModsStore()
+  const rwguard = useRwGuardStore()
 
   // Bootstrap the game-status mirror and keep it in sync with the OS. `run`
   // waits for it, so the first check never mistakes a running game for none.
@@ -190,6 +193,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     entries.value = INITIAL.map((e) => ({ ...e }))
     gtaMissingAll.value = false
     cacheActionType.value = null
+    lastCacheHealth.value = null
   }
 
   /** The Mods row, from the mods store. */
@@ -378,10 +382,61 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     })
   }
 
+  function applyCacheEntry(): void {
+    const cache = lastCacheHealth.value
+    if (!cache) return
+
+    if (cache.ok) {
+      if (rwguard.activeThreatCount > 0) {
+        update("cache", {
+          state: "warning",
+          detail: rwguard.summaryLine,
+          meta: undefined,
+        })
+        return
+      }
+      update("cache", {
+        state: "ok",
+        detail: undefined,
+        meta: rwguard.summaryLine,
+      })
+      return
+    }
+
+    // Never an error: missing models are downloaded by the game when it
+    // connects. "Could not verify" (API unreachable, nothing published yet)
+    // syncs nothing; missing files sync once GTA and SA:MP are ready.
+    const waiting = cacheActionType.value !== null && !(gtaReady.value && sampReady.value)
+    const baseDetail = waiting ? "Esperando a que GTA y SA:MP estén listos." : cache.detail
+    const detail =
+      rwguard.activeThreatCount > 0 && rwguard.summaryLine ? rwguard.summaryLine : baseDetail
+    update("cache", {
+      state: "warning",
+      detail,
+      meta: undefined,
+    })
+  }
+
+  watch(
+    () => [
+      rwguard.status,
+      rwguard.progress,
+      gtaReady.value,
+      sampReady.value,
+      cacheInstalling.value,
+    ],
+    () => {
+      if (!cacheInstalling.value && lastCacheHealth.value) {
+        applyCacheEntry()
+      }
+    },
+  )
+
   /** `pending`: a check already in flight (`run` starts it early so the API
    *  round-trip overlaps the GTA / SA:MP checks). */
   async function checkCache(pending: Promise<CacheHealth> = launcher.checkCache()): Promise<void> {
     const cache = await pending
+    lastCacheHealth.value = cache
     cacheActionType.value = cache.ok
       ? null
       : cache.needsInstall
@@ -390,18 +445,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
           ? "update"
           : null
 
-    if (cache.ok) {
-      update("cache", { state: "ok", detail: undefined })
-      return
-    }
-    // Never an error: missing models are downloaded by the game when it
-    // connects. "Could not verify" (API unreachable, nothing published yet)
-    // syncs nothing; missing files sync once GTA and SA:MP are ready.
-    const waiting = cacheActionType.value !== null && !(gtaReady.value && sampReady.value)
-    update("cache", {
-      state: "warning",
-      detail: waiting ? "Esperando a que GTA y SA:MP estén listos." : cache.detail,
-    })
+    applyCacheEntry()
   }
 
   /** The automatic sync: files missing, GTA and SA:MP ready, the game closed,
@@ -432,17 +476,19 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
 
     running.value = true
     reset()
-    // The cache check (an API call plus a folder scan) starts right away;
-    // detection runs first among the local checks, as it may set the folder
-    // they (and the mods check) look at.
+    // The cache check (an API call plus a folder scan) and RWGuard's
+    // incremental scan of existing cache models start right away; detection
+    // runs first among the local checks, as it may set the folder they look at.
     const cache = launcher.checkCache()
+    const rwguardScan = rwguard.scan()
     await detectGta()
     const modsCheck = mods.check({ force: options.force })
     await Promise.all([checkGta(), checkSamp(), checkElevation()])
-    // GTA → SA:MP → mods → cache: required mods install before the cache
-    // sync starts, and Play waits for them.
+    // GTA → SA:MP → mods → cache (+ RWGuard existing-cache validation):
+    // required mods install before the cache sync starts, and Play waits for them.
     await checkMods(modsCheck)
-    await checkCache(cache)
+    await Promise.all([checkCache(cache), rwguardScan])
+    applyCacheEntry()
     // Straight away, before any other await: there is no moment where Play
     // looks enabled and then an install starts under it.
     startInstalls()
