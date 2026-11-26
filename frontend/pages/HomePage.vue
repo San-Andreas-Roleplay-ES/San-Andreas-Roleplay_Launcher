@@ -107,7 +107,7 @@ function showBlockHint() {
   blockHint.value =
     failing?.detail ??
     (mods.working
-      ? "Espera a que terminen de instalarse los mods."
+      ? "Instalando mods…"
       : health.cacheInstalling
         ? "Espera a que termine de actualizarse el caché, o pulsa «Omitir» para jugar ya."
         : "Faltan archivos del juego — verifica tu instalación.")
@@ -120,9 +120,9 @@ function showBlockHint() {
 <template>
   <ShellLayout :loading="!ready">
     <template #skeleton>
-      <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6">
+      <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6 short:gap-3">
         <header class="flex items-center gap-5">
-          <LogoMark size="md" />
+          <LogoMark size="md" class="short:h-20 short:w-20" />
           <!-- Heights mirror the real header (h1 ~32 px, ServerStatus ~16 px,
                tagline slot 40 px) so the swap from skeleton to content is
                CLS-free. -->
@@ -134,7 +134,7 @@ function showBlockHint() {
         </header>
 
         <section
-          class="relative w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
+          class="relative w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm short:py-3"
         >
           <div class="mb-3 flex items-center justify-between">
             <div class="skeleton-block h-3 w-40" />
@@ -169,9 +169,9 @@ function showBlockHint() {
       </div>
     </template>
 
-    <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6">
+    <div class="flex w-full max-w-2xl flex-col items-center gap-4 md:gap-6 short:gap-3">
       <header class="flex items-center gap-5">
-        <LogoMark size="md" replay-on-hover />
+        <LogoMark size="md" replay-on-hover class="short:h-20 short:w-20" />
         <div class="flex min-w-0 flex-col gap-1">
           <h1 class="text-2xl tracking-tight text-white">
             <span class="font-light text-white/85">Bienvenido a</span>

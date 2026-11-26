@@ -18,8 +18,7 @@ defineEmits<{
       <div
         v-for="i in 5"
         :key="i"
-        class="shrink-0 animate-pulse rounded-xl bg-white/[0.05]"
-        style="height: clamp(150px, 21.6vh, 240px); aspect-ratio: 9 / 16"
+        class="aspect-[9/16] h-[clamp(150px,21.6vh,240px)] shrink-0 animate-pulse rounded-xl bg-white/[0.05] short:h-[clamp(112px,16vh,240px)]"
       />
     </div>
 

@@ -352,14 +352,8 @@ async fn a_corrupt_package_fails_and_blocks_play_only_for_a_required_mod() {
         .iter()
         .map(|f| (f.id.as_str(), f.error.as_str()))
         .collect();
-    assert_eq!(
-        failed["modloader"],
-        "El paquete de Modloader no coincide con el publicado."
-    );
-    assert_eq!(
-        failed["radar"],
-        "Necesita Modloader, que no se pudo instalar."
-    );
+    assert_eq!(failed["modloader"], "Descarga dañada.");
+    assert_eq!(failed["radar"], "Falló Modloader.");
     assert!(!failed.contains_key("asi-loader"));
     assert_eq!(fx.read("vorbisFile.dll").unwrap(), SILENT);
     assert!(fx.read("modloader.asi").is_none());
@@ -418,10 +412,7 @@ async fn a_file_that_does_not_match_inside_a_good_zip_is_refused() {
         "id": "x", "name": "X", "required": true, "defaultVariant": "default", "variants": [variant]
     })]);
     let result = fx.auto(&catalog).await;
-    assert_eq!(
-        result.failed[0].error,
-        "x.asi del paquete no coincide con el publicado."
-    );
+    assert_eq!(result.failed[0].error, "Descarga dañada.");
     assert!(fx.read("x.asi").is_none());
     fx.assert_no_litter();
 }
@@ -779,10 +770,7 @@ async fn dependencies_install_first_and_lock_what_needs_them() {
             },
         )
         .await;
-    assert_eq!(
-        refused.error.as_deref(),
-        Some("Base es esencial: no se puede desactivar.")
-    );
+    assert_eq!(refused.error.as_deref(), Some("Base es esencial."));
     fx.server.forget_requests();
     let on = fx
         .run(
@@ -815,10 +803,7 @@ async fn dependencies_install_first_and_lock_what_needs_them() {
             },
         )
         .await;
-    assert_eq!(
-        refused.error.as_deref(),
-        Some("Primero desactiva Radar: lo necesita.")
-    );
+    assert_eq!(refused.error.as_deref(), Some("Lo necesita Radar."));
     assert_eq!(fx.read("lib.asi").unwrap(), b"l");
     let health = fx.check(&catalog).await;
     assert_eq!(Fx::status(&health, "lib").required_by, ["Radar"]);
@@ -862,10 +847,7 @@ async fn dependencies_install_first_and_lock_what_needs_them() {
             },
         )
         .await;
-    assert_eq!(
-        refused.error.as_deref(),
-        Some("Necesita «ghost», que no está disponible.")
-    );
+    assert_eq!(refused.error.as_deref(), Some("Falta ghost."));
 }
 
 #[tokio::test]
@@ -928,10 +910,7 @@ async fn asi_loaders_installed_by_hand_are_left_alone() {
             },
         )
         .await;
-    assert!(again
-        .error
-        .unwrap()
-        .contains("no está instalado por tu cuenta"));
+    assert!(again.error.unwrap().contains("No aplica"));
 }
 
 #[tokio::test]
@@ -966,10 +945,7 @@ async fn a_clashing_radar_is_renamed_out_of_the_way_and_back() {
     let nothing = fx
         .run(&catalog, Request::Conflicts { id: "radar".into() })
         .await;
-    assert_eq!(
-        nothing.error.as_deref(),
-        Some("Radar no tiene nada que desactivar.")
-    );
+    assert_eq!(nothing.error.as_deref(), Some("Nada que desactivar."));
 
     // Turning our radar off brings theirs back.
     assert!(
@@ -1009,10 +985,7 @@ async fn nothing_is_touched_while_the_game_runs() {
         },
     ] {
         let result = fx.run(&catalog, request).await;
-        assert_eq!(
-            result.error.as_deref(),
-            Some("Cierra GTA San Andreas antes de cambiar los mods.")
-        );
+        assert_eq!(result.error.as_deref(), Some("Cierra el juego primero."));
     }
     assert_eq!(fx.game_tree(), before);
     assert!(
@@ -1160,3 +1133,6 @@ async fn backups_are_per_game_folder() {
     assert_ne!(a, engine.backups_dir(Path::new(r"D:\GTA")));
     assert_eq!(a.parent().unwrap(), fx.backups);
 }
+
+#[path = "preserve_tests.rs"]
+mod preserve;

@@ -155,7 +155,7 @@ const showCancel = computed(
 </script>
 
 <template>
-  <div class="flex min-h-14 items-center gap-3 py-2.5">
+  <div class="flex min-h-14 items-center gap-3 py-2.5 short:min-h-12 short:py-2">
     <div class="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
       <div class="flex items-baseline justify-between gap-3">
         <span class="truncate py-px text-sm leading-tight" :class="titleClass">{{ title }}</span>

@@ -34,6 +34,9 @@ export interface ModVariant {
   version: string
   /** Download size. */
   bytes: number
+  /** Image of how it looks (square). When every variant has one, the
+   *  picker shows the images. */
+  preview?: string
 }
 
 export interface InstalledMod {

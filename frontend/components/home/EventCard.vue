@@ -13,8 +13,7 @@ defineEmits<{
 <template>
   <button
     type="button"
-    class="group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] transition hover:border-white/25 hover:shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
-    style="height: clamp(150px, 21.6vh, 240px); aspect-ratio: 9 / 16"
+    class="group relative flex aspect-[9/16] h-[clamp(150px,21.6vh,240px)] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] transition hover:border-white/25 hover:shadow-[0_8px_24px_rgba(0,0,0,0.45)] short:h-[clamp(112px,16vh,240px)]"
     @click="$emit('open', event)"
   >
     <div class="relative h-full w-full overflow-hidden bg-zinc-800">

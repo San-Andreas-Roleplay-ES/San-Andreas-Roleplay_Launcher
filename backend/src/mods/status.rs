@@ -96,10 +96,7 @@ pub fn blocked(catalog: &Catalog, launcher: &Version) -> HashMap<String, String>
     let mut out: HashMap<String, String> = HashMap::new();
     for m in &catalog.mods {
         if let Some(min) = m.min_launcher.as_ref().filter(|min| launcher < *min) {
-            out.insert(
-                m.id.clone(),
-                format!("Necesita la versión {min} del launcher o una más nueva."),
-            );
+            out.insert(m.id.clone(), format!("Requiere launcher {min}."));
         }
     }
     loop {
@@ -110,10 +107,8 @@ pub fn blocked(catalog: &Catalog, launcher: &Version) -> HashMap<String, String>
             }
             for dep in &m.requires {
                 let reason = match catalog.get(dep) {
-                    None => Some(format!("Necesita «{dep}», que no está disponible.")),
-                    Some(d) if out.contains_key(&d.id) => {
-                        Some(format!("Necesita {}, que no se puede instalar.", d.name))
-                    }
+                    None => Some(format!("Falta {dep}.")),
+                    Some(d) if out.contains_key(&d.id) => Some(format!("Requiere {}.", d.name)),
                     Some(_) => None,
                 };
                 if let Some(reason) = reason {
@@ -274,6 +269,8 @@ fn adopt(variant: &Variant, dir: &std::path::Path) -> ModRecord {
             .collect(),
         disabled: Vec::new(),
         adopted: true,
+        // Their folders: never removed by us.
+        dirs: Vec::new(),
     }
 }
 
@@ -524,18 +521,9 @@ pub(crate) mod tests {
         let mut ids: Vec<_> = blocked.keys().cloned().collect();
         ids.sort();
         assert_eq!(ids, ["chain", "needs-ghost", "needs-new", "new"]);
-        assert_eq!(
-            blocked["new"],
-            "Necesita la versión 1.3.0 del launcher o una más nueva."
-        );
-        assert_eq!(
-            blocked["needs-ghost"],
-            "Necesita «ghost», que no está disponible."
-        );
-        assert_eq!(
-            blocked["chain"],
-            "Necesita needs-ghost, que no se puede instalar."
-        );
+        assert_eq!(blocked["new"], "Requiere launcher 1.3.0.");
+        assert_eq!(blocked["needs-ghost"], "Falta ghost.");
+        assert_eq!(blocked["chain"], "Requiere needs-ghost.");
         let survey = run(&c, None, &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(survey.view("new").unwrap().state, State::Blocked);
         assert_eq!(survey.view("free").unwrap().state, State::NotInstalled);

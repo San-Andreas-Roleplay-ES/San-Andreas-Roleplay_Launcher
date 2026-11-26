@@ -92,6 +92,9 @@ pub struct VariantInfo {
     pub version: String,
     /// Download size.
     pub bytes: u64,
+    /// Image of how it looks, when the catalog has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -345,23 +348,17 @@ fn catalog_info(loaded: &Loaded) -> CatalogInfo {
     let detail = match (loaded.origin, loaded.problem) {
         (Origin::Live, _) | (Origin::Saved, None) | (Origin::Empty, _) => None,
         (Origin::Saved, Some(Problem::Unreachable)) => {
-            Some("No se pudo actualizar la lista de mods; se usa la última descargada.")
+            Some("Sin conexión: se usa la lista guardada.")
         }
         (Origin::Saved, Some(Problem::TooNew)) => {
-            Some("Hay mods nuevos que necesitan una versión más nueva del launcher.")
+            Some("Actualiza el launcher para ver mods nuevos.")
         }
-        (Origin::Saved, Some(_)) => Some(
-            "La lista de mods recibida no pasó la verificación de seguridad; se usa la última verificada.",
-        ),
+        (Origin::Saved, Some(_)) => Some("Lista no verificada: se usa la anterior."),
         (Origin::Missing, Some(Problem::TooNew)) => {
-            Some("Actualiza el launcher para ver los mods disponibles.")
+            Some("Actualiza el launcher para ver los mods.")
         }
-        (Origin::Missing, Some(Problem::Unreachable) | None) => {
-            Some("No se pudo obtener la lista de mods. Revisa tu conexión a Internet.")
-        }
-        (Origin::Missing, Some(_)) => Some(
-            "La lista de mods recibida no pasó la verificación de seguridad: no se instaló nada.",
-        ),
+        (Origin::Missing, Some(Problem::Unreachable) | None) => Some("No se pudo cargar la lista."),
+        (Origin::Missing, Some(_)) => Some("Lista no verificada: no se instaló nada."),
     };
     CatalogInfo {
         state: match loaded.origin {
@@ -490,6 +487,7 @@ impl Engine<'_> {
                     label: v.label.clone(),
                     version: v.version.clone(),
                     bytes: v.package.bytes,
+                    preview: v.preview.clone(),
                 })
                 .collect(),
             state: view.state,
@@ -567,7 +565,7 @@ impl Engine<'_> {
             catalog
                 .get(id)
                 .zip(survey.view(id))
-                .ok_or_else(|| "Ese mod ya no está en la lista.".to_string())
+                .ok_or_else(|| "Ya no está disponible.".to_string())
         };
         let mut prefs = self.store.get().mods_prefs;
         let with_deps = |id: &str| {
@@ -580,17 +578,14 @@ impl Engine<'_> {
             Request::Enable { id, enabled: false } => {
                 let (m, view) = find(id)?;
                 if m.required {
-                    return Err(format!("{} es esencial: no se puede desactivar.", m.name));
+                    return Err(format!("{} es esencial.", m.name));
                 }
                 let needers: Vec<String> = status::dependents(catalog, &wanted_of(survey), id)
                     .into_iter()
                     .map(|d| d.name.clone())
                     .collect();
                 if !needers.is_empty() {
-                    return Err(format!(
-                        "Primero desactiva {}: lo necesita.",
-                        names(&needers)
-                    ));
+                    return Err(format!("Lo necesita {}.", names(&needers)));
                 }
                 prefs.insert(
                     id.clone(),
@@ -640,12 +635,12 @@ impl Engine<'_> {
                 (Some(only), Vec::new())
             }
             Request::Recommended { id } => {
-                let (m, view) = find(id)?;
+                let (_, view) = find(id)?;
                 if let Some(reason) = &view.blocked {
                     return Err(reason.clone());
                 }
                 if view.state != State::Foreign {
-                    return Err(format!("{} no está instalado por tu cuenta.", m.name));
+                    return Err("No aplica.".into());
                 }
                 prefs.insert(
                     id.clone(),
@@ -663,9 +658,9 @@ impl Engine<'_> {
                 (Some(deps), vec![install])
             }
             Request::Conflicts { id } => {
-                let (m, view) = find(id)?;
+                let (_, view) = find(id)?;
                 if view.record.is_none() || view.conflicts.is_empty() {
-                    return Err(format!("{} no tiene nada que desactivar.", m.name));
+                    return Err("Nada que desactivar.".into());
                 }
                 (
                     Some(HashSet::new()),
@@ -682,10 +677,10 @@ impl Engine<'_> {
     /// Runs `request` against the game folder.
     pub async fn run(&self, catalog: &Arc<Catalog>, request: Request) -> ModsSyncResult {
         let Some(_busy) = self.state.begin() else {
-            return ModsSyncResult::refused("Ya se están instalando mods.");
+            return ModsSyncResult::refused("Instalación en curso.");
         };
         if (self.game_running)() {
-            return ModsSyncResult::refused("Cierra GTA San Andreas antes de cambiar los mods.");
+            return ModsSyncResult::refused("Cierra el juego primero.");
         }
         let survey = self.survey(catalog).await;
         let (only, extra) = match self.choose(catalog, &survey, &request) {
@@ -696,7 +691,7 @@ impl Engine<'_> {
             // Only the choices change until there is a game folder.
             return match request {
                 Request::Recommended { .. } | Request::Conflicts { .. } => {
-                    ModsSyncResult::refused("Elige primero la carpeta de GTA San Andreas.")
+                    ModsSyncResult::refused("Elige la carpeta de GTA.")
                 }
                 _ => ModsSyncResult::ok(),
             };
@@ -854,7 +849,7 @@ pub async fn run(app: &AppHandle, request: Request) -> ModsSyncResult {
     let loaded = ctx.mods.loaded(&ctx.api, &ctx.store, false).await;
     match &loaded.catalog {
         Some(catalog) => engine(app).run(catalog, request).await,
-        None => ModsSyncResult::refused("No hay una lista de mods verificada."),
+        None => ModsSyncResult::refused("No hay lista de mods."),
     }
 }
 
@@ -899,7 +894,7 @@ mod tests {
             catalog_info(&loaded(Origin::Saved, Some(Problem::Rollback)))
                 .detail
                 .unwrap()
-                .contains("última verificada")
+                .contains("se usa la anterior")
         );
         assert_eq!(
             serde_json::to_value(catalog_info(&loaded(
@@ -909,7 +904,7 @@ mod tests {
             .unwrap(),
             json!({
                 "state": "missing",
-                "detail": "No se pudo obtener la lista de mods. Revisa tu conexión a Internet."
+                "detail": "No se pudo cargar la lista."
             })
         );
     }

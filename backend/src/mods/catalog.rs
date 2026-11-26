@@ -59,6 +59,9 @@ pub struct Variant {
     pub target: Target,
     pub package: Package,
     pub files: Vec<ModFile>,
+    /// An image showing what the variant looks like (the panel compares
+    /// them side by side). Optional; an unusable one is dropped.
+    pub preview: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +167,9 @@ struct RawVariant {
     target: Target,
     package: Package,
     files: Vec<RawFile>,
+    /// Any JSON: a bad one only loses the preview, never the variant.
+    #[serde(default)]
+    preview: Value,
 }
 
 #[derive(Deserialize)]
@@ -286,6 +292,18 @@ fn parse_variant(raw: RawVariant, require_https: bool) -> Result<Variant, String
             ));
         }
     }
+    let preview = match &raw.preview {
+        Value::Null => None,
+        value => {
+            let checked = value
+                .as_str()
+                .and_then(|url| check_url(url, require_https, true));
+            if checked.is_none() {
+                log::warn!("mods catalog: variant {} preview ignored: {value}", raw.id);
+            }
+            checked
+        }
+    };
     Ok(Variant {
         id: raw.id,
         label,
@@ -297,6 +315,7 @@ fn parse_variant(raw: RawVariant, require_https: bool) -> Result<Variant, String
             sha256: raw.package.sha256.to_ascii_lowercase(),
         },
         files,
+        preview,
     })
 }
 
@@ -701,6 +720,48 @@ pub(crate) mod tests {
         let parsed = parse(&catalog_of(vec![required]), true).unwrap();
         assert!(parsed.mods[0].enabled_by_default);
         assert_eq!(parsed.mods[0].category, "essential");
+    }
+
+    #[test]
+    fn previews_are_optional_and_a_bad_one_is_only_dropped() {
+        let with_preview = |preview: Value, https: bool| {
+            let mut m = a_mod("x");
+            m["variants"][0]["preview"] = preview;
+            let catalog = parse(&catalog_of(vec![m]), https).unwrap();
+            assert_eq!(catalog.mods.len(), 1, "the mod always stays");
+            catalog.mods[0].variants[0].preview.clone()
+        };
+        assert_eq!(
+            with_preview(
+                json!("https://f005.backblazeb2.com/file/sarp-public/mods/radar/2026.10.25/lq.png"),
+                true
+            ),
+            Some(
+                "https://f005.backblazeb2.com/file/sarp-public/mods/radar/2026.10.25/lq.png".into()
+            )
+        );
+        assert_eq!(
+            with_preview(json!("https://cdn.example/p.png?v=2"), true),
+            Some("https://cdn.example/p.png?v=2".into())
+        );
+        assert_eq!(with_preview(Value::Null, true), None);
+        for bad in [
+            json!("http://cdn.example/p.png"),
+            json!("file:///C:/p.png"),
+            json!("https://user:pw@cdn.example/p.png"),
+            json!("https://cdn.example/p.png#x"),
+            json!("javascript:alert(1)"),
+            json!("not a url"),
+            json!(5),
+            json!({ "url": "https://cdn.example/p.png" }),
+        ] {
+            assert_eq!(with_preview(bad.clone(), true), None, "{bad}");
+        }
+        // A debug build talking to a local mock.
+        assert_eq!(
+            with_preview(json!("http://127.0.0.1:5299/lq.png"), false),
+            Some("http://127.0.0.1:5299/lq.png".into())
+        );
     }
 
     #[test]

@@ -103,7 +103,7 @@ const actionProgressFillClass = computed(() =>
 </script>
 
 <template>
-  <div class="flex min-h-14 items-start gap-3 overflow-hidden py-2.5">
+  <div class="flex min-h-14 items-start gap-3 overflow-hidden py-2.5 short:min-h-12 short:py-2">
     <span class="mt-0.5 inline-flex h-4 w-4 flex-shrink-0 items-center justify-center leading-none">
       <span v-if="state === 'checking'" class="state-spinner" aria-label="Verificando" />
       <i v-else class="pi text-base leading-none" :class="[icon, color]" />
@@ -111,10 +111,18 @@ const actionProgressFillClass = computed(() =>
     <div class="flex min-w-0 flex-1 flex-col gap-1">
       <span class="truncate text-sm leading-tight text-white/85">{{ label }}</span>
       <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <!-- Bounded so the card never grows past the window: a detail takes
+             two lines at most, a meta (a path, the ping) one; the whole text
+             is in the tooltip. -->
         <span
           v-if="subline"
-          class="block w-full break-words text-xs leading-snug"
-          :class="subline.kind === 'detail' ? 'text-white/50' : 'text-white/40'"
+          class="block w-full text-xs leading-snug"
+          :class="
+            subline.kind === 'detail'
+              ? 'line-clamp-2 break-words text-white/50'
+              : 'truncate text-white/40'
+          "
+          :title="subline.text"
         >
           {{ subline.text }}
         </span>

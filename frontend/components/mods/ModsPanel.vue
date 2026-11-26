@@ -47,7 +47,7 @@ const disabled = computed(() => mods.working || health.gameRunning)
 const banner = computed<{ text: string; tone: string; icon: string } | null>(() => {
   if (health.gameRunning) {
     return {
-      text: "Cierra el juego para cambiar los mods.",
+      text: "Cierra el juego para cambiar mods.",
       tone: "border-sky-400/30 bg-sky-400/[0.06] text-sky-100/90",
       icon: "pi-info-circle text-sky-300",
     }
@@ -62,7 +62,7 @@ const banner = computed<{ text: string; tone: string; icon: string } | null>(() 
   }
   if (mods.health && !mods.health.ready) {
     return {
-      text: "Elige la carpeta de GTA San Andreas para instalar mods. Puedes dejarlos elegidos.",
+      text: "Elige la carpeta de GTA primero.",
       tone: "border-white/10 bg-white/[0.03] text-white/70",
       icon: "pi-folder-open text-white/50",
     }
@@ -92,22 +92,16 @@ function working(mod: ModStatus): boolean {
           role="dialog"
           aria-modal="true"
           aria-labelledby="mods-title"
-          aria-describedby="mods-subtitle"
           tabindex="-1"
           class="panel-card flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900/95 shadow-2xl ring-1 ring-amber-400/20 backdrop-blur-md focus:outline-none"
         >
-          <header class="flex items-start gap-3 px-5 pt-5">
-            <i class="pi pi-box mt-0.5 text-xl text-amber-300" aria-hidden="true" />
-            <div class="min-w-0 flex-1">
-              <h3 id="mods-title" class="text-sm font-semibold text-white">Mods</h3>
-              <p id="mods-subtitle" class="mt-1 text-sm leading-relaxed text-white/70">
-                Los esenciales los instala el launcher. Los opcionales, como prefieras: los cambios
-                se aplican al momento.
-              </p>
-            </div>
+          <header class="flex items-center gap-2.5 px-5 pt-4">
+            <i class="pi pi-box text-base text-amber-300" aria-hidden="true" />
+            <h3 id="mods-title" class="min-w-0 flex-1 text-sm font-semibold text-white">Mods</h3>
             <button
               type="button"
-              class="-mr-1 -mt-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-white/50 transition-colors duration-150 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
+              data-autofocus
+              class="-mr-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-white/50 transition-colors duration-150 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
               aria-label="Cerrar"
               @click="emit('close')"
             >
@@ -117,7 +111,7 @@ function working(mod: ModStatus): boolean {
 
           <div
             v-if="banner"
-            class="mx-5 mt-4 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-snug"
+            class="mx-5 mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-snug"
             :class="banner.tone"
           >
             <i class="pi mt-0.5 text-xs" :class="banner.icon" aria-hidden="true" />
@@ -133,13 +127,13 @@ function working(mod: ModStatus): boolean {
           <p class="sr-only" aria-live="polite">{{ status }}</p>
 
           <div
-            class="mt-4 min-h-0 flex-1 overflow-y-auto px-5 pb-1 [scrollbar-color:rgba(255,255,255,0.15)_transparent] [scrollbar-width:thin]"
+            class="mt-3 min-h-0 flex-1 overflow-y-auto px-5 pb-4 [scrollbar-color:rgba(255,255,255,0.15)_transparent] [scrollbar-width:thin]"
           >
             <p
               v-if="mods.mods.length === 0"
               class="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-white/55"
             >
-              {{ mods.checking ? "Buscando mods…" : "No hay mods disponibles por ahora." }}
+              {{ mods.checking ? "Buscando…" : "Ninguno disponible." }}
             </p>
 
             <section v-if="mods.required.length > 0" aria-labelledby="mods-essential">
@@ -165,7 +159,7 @@ function working(mod: ModStatus): boolean {
               </ul>
             </section>
 
-            <section v-if="mods.optional.length > 0" class="mt-5" aria-labelledby="mods-optional">
+            <section v-if="mods.optional.length > 0" class="mt-4" aria-labelledby="mods-optional">
               <h4
                 id="mods-optional"
                 class="mb-2 text-[11px] font-medium uppercase tracking-widest text-white/45"
@@ -197,22 +191,6 @@ function working(mod: ModStatus): boolean {
               </div>
             </section>
           </div>
-
-          <footer
-            class="mt-4 flex items-center justify-between gap-3 border-t border-white/5 bg-white/[0.02] px-5 py-3"
-          >
-            <span class="text-[11px] leading-snug text-white/40">
-              Lo que el launcher reemplaza queda guardado y vuelve si quitas el mod.
-            </span>
-            <button
-              type="button"
-              data-autofocus
-              class="inline-flex h-8 min-w-[80px] items-center justify-center rounded-md bg-white/10 px-3 text-xs font-bold text-white/90 transition-colors duration-150 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
-              @click="emit('close')"
-            >
-              Cerrar
-            </button>
-          </footer>
         </div>
       </div>
     </Transition>

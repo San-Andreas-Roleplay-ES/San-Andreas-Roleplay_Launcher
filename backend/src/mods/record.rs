@@ -47,6 +47,12 @@ pub struct ModRecord {
     /// Found in place with matching hashes rather than written by us.
     #[serde(default)]
     pub adopted: bool,
+    /// Folders the launcher created for this mod (they did not exist). Only
+    /// these are ever removed, and only once empty: a folder that was
+    /// already there (a user's, `modloader/`) never goes. Older records have
+    /// none, so nothing is removed for them.
+    #[serde(default)]
+    pub dirs: Vec<String>,
 }
 
 impl ModRecord {

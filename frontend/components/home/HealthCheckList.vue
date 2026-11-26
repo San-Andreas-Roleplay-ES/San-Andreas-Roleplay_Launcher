@@ -56,9 +56,9 @@ function inlineActionFor(entry: HealthEntry): InlineAction | undefined {
       id: MODS_BUTTON_ID,
       label: "Mods",
       icon: "pi-box",
-      title: "Ver y elegir los mods",
+      title: "Elegir mods",
       badge: mods.attention,
-      badgeLabel: "(hay algo para revisar)",
+      badgeLabel: "(revisar)",
       onClick: () => mods.openPanel(),
     }
   }
@@ -161,7 +161,7 @@ onMounted(() => {
 
 <template>
   <section
-    class="relative w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
+    class="relative w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm short:py-3"
   >
     <div
       class="pointer-events-none absolute inset-x-0 top-0 h-px overflow-hidden bg-white/5"
@@ -202,7 +202,7 @@ onMounted(() => {
           download-title="Descargando mods"
           :cancellable="mods.cancellable"
           :cancelling="mods.cancelling"
-          cancel-title="Deja de instalar los mods opcionales; puedes seguir luego desde Mods."
+          cancel-title="Detiene los opcionales; sigue luego desde Mods."
           @cancel="mods.cancel()"
         />
         <GtaInstallRow

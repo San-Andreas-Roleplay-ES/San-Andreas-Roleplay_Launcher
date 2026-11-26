@@ -199,13 +199,13 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     if (!health) {
       return mods.checking
         ? { ...clear, state: "checking" }
-        : { ...clear, state: "warning", detail: "No se pudieron comprobar los mods." }
+        : { ...clear, state: "warning", detail: "No se pudieron comprobar." }
     }
     if (health.catalog.state === "missing") {
       return { ...clear, state: "warning", detail: health.catalog.detail }
     }
     if (health.mods.length === 0) {
-      return { ...clear, state: "ok", meta: "No hay mods disponibles por ahora." }
+      return { ...clear, state: "ok", meta: "Ninguno disponible." }
     }
     const failed = health.mods.find((m) => m.blocking) ?? health.mods.find((m) => m.error)
     if (failed) {
@@ -216,17 +216,17 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
       }
     }
     if (health.pending && !(gtaReady.value && sampReady.value)) {
-      return { ...clear, state: "warning", detail: "Esperando a que GTA y SA:MP estén listos." }
+      return { ...clear, state: "warning", detail: "Esperando a GTA y SA:MP." }
     }
     if (health.pending && gameRunning.value) {
-      return { ...clear, state: "warning", detail: "Se instalarán al cerrar el juego." }
+      return { ...clear, state: "warning", detail: "Pendiente: cierra el juego." }
     }
     const conflict = health.mods.find((m) => m.conflicts.length > 0)
     if (conflict) {
       return {
         ...clear,
         state: "warning",
-        detail: `${conflict.name} puede chocar con otra instalación tuya. Revísalo en Mods.`,
+        detail: `${conflict.name} choca con otro instalado.`,
       }
     }
     if (health.catalog.detail) {
@@ -238,7 +238,7 @@ export const useHealthCheckStore = defineStore("healthCheck", () => {
     return {
       ...clear,
       state: "ok",
-      meta: active.length > 0 ? `Activos: ${joinFileList(active)}.` : "Ninguno activo.",
+      meta: active.length === 1 ? "1 activo" : `${active.length} activos`,
     }
   }
 

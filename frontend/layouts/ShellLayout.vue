@@ -55,8 +55,10 @@ function openSite() {
 
     <slot v-if="$slots.belowHeader" name="belowHeader" />
 
+    <!-- Scrolls instead of clipping when the content is taller than the
+         window (a tiny screen, big texts): nothing is ever cut off. -->
     <main
-      class="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-6 md:px-10 md:py-8"
+      class="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-6 py-6 [scrollbar-color:rgba(255,255,255,0.15)_transparent] [scrollbar-width:thin] md:px-10 md:py-8 short:py-3"
     >
       <Transition name="shell-fade" mode="out-in">
         <div
