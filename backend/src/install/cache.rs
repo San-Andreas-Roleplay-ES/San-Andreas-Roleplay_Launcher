@@ -49,6 +49,7 @@ use crate::net::api::{self, Api, BAD_RESPONSE};
 use crate::net::http::{
     download_with_resume, next_chunk, send, Failure, Leftover, Limits, ResumeOptions,
 };
+use crate::rwguard::{self, CacheGuard};
 use crate::Ctx;
 
 mod pace;
@@ -78,6 +79,10 @@ const SPACE_MARGIN: u64 = 256 * 1024 * 1024;
 const TEMP_SUFFIX: &str = ".sarp-part";
 const PACKAGE_MESSAGE: &str = "Descargando paquete del caché...";
 
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
 /// How a sync attempt ended. None of it blocks playing: SA-MP downloads any
 /// model it lacks from the game server, so the UI only warns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -92,6 +97,9 @@ pub struct CacheInstallResult {
     /// Listed files still missing because they could not be downloaded (or
     /// were never tried once the sync gave up or was cancelled).
     pub failed: u64,
+    /// Models rejected by RWGuard before landing in the cache folder.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub blocked: u64,
     /// The user stopped it (`cancel_cache`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cancelled: Option<bool>,
@@ -103,6 +111,7 @@ impl CacheInstallResult {
             ok: false,
             error: Some(message.into()),
             failed: 0,
+            blocked: 0,
             cancelled: None,
         }
     }
@@ -110,9 +119,10 @@ impl CacheInstallResult {
     fn from_run(run: Result<Summary, String>) -> Self {
         match run {
             Ok(summary) => Self {
-                ok: summary.missing() == 0 && !summary.cancelled,
+                ok: summary.missing() == 0 && summary.blocked == 0 && !summary.cancelled,
                 error: None,
                 failed: summary.missing() as u64,
+                blocked: summary.blocked as u64,
                 cancelled: summary.cancelled.then_some(true),
             },
             Err(error) => Self::error(error),
@@ -618,6 +628,8 @@ pub struct Summary {
     pub downloaded: usize,
     /// Failed every attempt (or were cut short when the sync gave up).
     pub failed: usize,
+    /// Rejected by RWGuard during download or extraction.
+    pub blocked: usize,
     /// Never tried: the sync gave up or was cancelled first.
     pub skipped: usize,
     pub deleted: usize,
@@ -645,6 +657,9 @@ pub struct Job<'a> {
     pub package_dir: &'a Path,
     pub package_limits: Limits,
     pub file_limits: Limits,
+    /// Native RWGuard validator: scans existing cache first, then validates
+    /// each model concurrently as it unpacks or downloads.
+    pub guard: Option<Arc<CacheGuard>>,
 }
 
 impl<'a> Job<'a> {
@@ -653,6 +668,7 @@ impl<'a> Job<'a> {
         report: &'a Reporter,
         cancel: &'a Cancel,
         package_dir: &'a Path,
+        guard: Option<Arc<CacheGuard>>,
     ) -> Self {
         Self {
             client,
@@ -661,6 +677,7 @@ impl<'a> Job<'a> {
             package_dir,
             package_limits: Limits::RESUMABLE,
             file_limits: FILE_LIMITS,
+            guard,
         }
     }
 }
@@ -693,6 +710,30 @@ pub async fn sync(job: &Job<'_>, list: Arc<CacheList>, dir: &Path) -> Result<Sum
             tokio::task::spawn_blocking(move || remove_files(&stale_dir, &stale, is_cache_name))
                 .await
                 .map_err(|e| e.to_string())?;
+        if let Some(guard) = &job.guard {
+            guard.remove_stale(&plan.stale);
+        }
+    }
+
+    // Step 1: validate existing models in the server cache first (reusing
+    // persistent history so unchanged models finish in milliseconds).
+    if let Some(guard) = &job.guard {
+        if !scanned.files.is_empty() && !job.cancel.is_cancelled() {
+            report(
+                Progress::new(Phase::Verify, 0.0)
+                    .message("Validando caché existente con RWGuard..."),
+            );
+            let existing_dir = dir.to_path_buf();
+            let guard_ref = guard.clone();
+            if let Err(error) =
+                tokio::task::spawn_blocking(move || guard_ref.scan_existing(&existing_dir))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r.map_err(|e| e.to_string()))
+            {
+                log::warn!("RWGuard pre-sync scan failed: {error}");
+            }
+        }
     }
 
     let mut missing = plan.missing;
@@ -715,16 +756,23 @@ pub async fn sync(job: &Job<'_>, list: Arc<CacheList>, dir: &Path) -> Result<Sum
         if route == Route::Package {
             summary.package = true;
             match unpack(job, zip, dir, &missing).await {
-                Unpack::Cancelled(written) => {
+                Unpack::Cancelled(written, blocked) => {
                     summary.extracted = written;
-                    summary.skipped = missing.len() - written;
+                    summary.blocked += blocked;
+                    summary.skipped = missing.len().saturating_sub(written + blocked);
                     summary.cancelled = true;
                     return Ok(summary);
                 }
-                Unpack::Done(written) => {
+                Unpack::Done(written, blocked) => {
                     summary.extracted = written;
+                    summary.blocked += blocked;
                     unpacked = true;
                     missing = plan_again(&list, dir).await?;
+                    if let Some(guard) = &job.guard {
+                        // Do not re-download a file that RWGuard just rejected
+                        // from the package.
+                        missing.retain(|entry| !guard.was_blocked(&entry.name));
+                    }
                 }
                 // Never worse off: the same files, one by one.
                 Unpack::Failed => {}
@@ -742,13 +790,14 @@ pub async fn sync(job: &Job<'_>, list: Arc<CacheList>, dir: &Path) -> Result<Sum
     check_space(bytes_of(&missing), free_space(dir))?;
 
     let total = missing.len();
-    let (downloaded, failed) = download(job, &list, dir, missing, unpacked).await;
+    let (downloaded, failed, blocked) = download(job, &list, dir, missing, unpacked).await;
     summary.downloaded = downloaded;
     summary.failed = failed;
-    summary.skipped = total - downloaded - failed;
+    summary.blocked += blocked;
+    summary.skipped = total.saturating_sub(downloaded + failed + blocked);
     // A cancel that came after the last file is no cancel.
     summary.cancelled = job.cancel.is_cancelled() && summary.missing() > 0;
-    if summary.missing() == 0 {
+    if summary.missing() == 0 && summary.blocked == 0 {
         package::prune(job.package_dir, None);
     }
     Ok(summary)
@@ -777,9 +826,9 @@ async fn plan_again(list: &CacheList, dir: &Path) -> Result<Vec<Entry>, String> 
 }
 
 enum Unpack {
-    /// The files written before the cancel. The package stays.
-    Cancelled(usize),
-    Done(usize),
+    /// The files written (and blocked by RWGuard) before the cancel. The package stays.
+    Cancelled(usize, usize),
+    Done(usize, usize),
     /// Download given up, or the zip is unreadable: go file by file.
     Failed,
 }
@@ -806,7 +855,7 @@ async fn unpack(job: &Job<'_>, zip: &ZipInfo, dir: &Path, missing: &[Entry]) -> 
     if let Err(error) = download_with_resume(job.client, &opts, job.report, job.cancel).await {
         if job.cancel.is_cancelled() {
             log::info!("cache package download cancelled; the partial stays");
-            return Unpack::Cancelled(0);
+            return Unpack::Cancelled(0, 0);
         }
         log::warn!("cache package download failed ({error}); going file by file");
         return Unpack::Failed;
@@ -814,16 +863,23 @@ async fn unpack(job: &Job<'_>, zip: &ZipInfo, dir: &Path, missing: &[Entry]) -> 
 
     (job.report)(Progress::new(Phase::Extract, 0.0).message("Abriendo el paquete del caché..."));
     let (zip_path, target, wanted) = (dest.clone(), dir.to_path_buf(), missing.to_vec());
-    let (report, cancel) = (job.report.clone(), job.cancel.clone());
+    let (report, cancel, guard) = (job.report.clone(), job.cancel.clone(), job.guard.clone());
     let started = Instant::now();
     let unpacked = tokio::task::spawn_blocking(move || {
-        package::extract(&zip_path, &target, &wanted, &report, &cancel)
+        package::extract(
+            &zip_path,
+            &target,
+            &wanted,
+            &report,
+            &cancel,
+            guard.as_deref(),
+        )
     })
     .await;
     match unpacked {
         Ok(Ok(unpacked)) if job.cancel.is_cancelled() => {
             log::info!("cache package: unpack cancelled after {}", unpacked.written);
-            Unpack::Cancelled(unpacked.written)
+            Unpack::Cancelled(unpacked.written, unpacked.blocked)
         }
         Ok(Ok(unpacked)) => {
             log::info!(
@@ -832,7 +888,7 @@ async fn unpack(job: &Job<'_>, zip: &ZipInfo, dir: &Path, missing: &[Entry]) -> 
                 started.elapsed()
             );
             package::prune(job.package_dir, None);
-            Unpack::Done(unpacked.written)
+            Unpack::Done(unpacked.written, unpacked.blocked)
         }
         Ok(Err(error)) => {
             log::warn!("cache package unreadable ({error}); deleting it, going file by file");
@@ -910,17 +966,22 @@ impl Tracker {
     }
 }
 
+enum FileErr {
+    Http(Failure),
+    Blocked(String),
+}
+
 /// Downloads `files`, as many at once as the line takes (`Pace`). Retries go
 /// back to the front of the queue, so they wait for a free slot like
 /// everything else: when the pace drops, the files already failing slow down
-/// too. Returns (downloaded, failed).
+/// too. Returns `(downloaded, failed, blocked)`.
 async fn download(
     job: &Job<'_>,
     list: &CacheList,
     dir: &Path,
     files: Vec<Entry>,
     remaining: bool,
-) -> (usize, usize) {
+) -> (usize, usize, usize) {
     let tracker = Mutex::new(Tracker {
         report: job.report.clone(),
         files: files.len(),
@@ -935,7 +996,7 @@ async fn download(
     let pace = Mutex::new(Pace::default());
     let mut queue: VecDeque<(Entry, u32)> = files.into_iter().map(|e| (e, 0)).collect();
     let mut running = FuturesUnordered::new();
-    let (mut downloaded, mut failed, mut streak) = (0, 0, 0);
+    let (mut downloaded, mut failed, mut blocked, mut streak) = (0, 0, 0, 0);
     let mut gave_up = false;
     loop {
         if !gave_up && !job.cancel.is_cancelled() {
@@ -955,8 +1016,14 @@ async fn download(
                 streak = 0;
                 lock(&tracker).finished();
             }
-            Err(Failure::Cancelled) => {}
-            Err(failure) if tries + 1 < job.file_limits.attempts && !gave_up => {
+            Err(FileErr::Blocked(reason)) => {
+                log::warn!("cache file {} blocked by RWGuard: {reason}", entry.name);
+                blocked += 1;
+                streak = 0;
+                lock(&tracker).finished();
+            }
+            Err(FileErr::Http(Failure::Cancelled)) => {}
+            Err(FileErr::Http(failure)) if tries + 1 < job.file_limits.attempts && !gave_up => {
                 log::debug!(
                     "cache file {} attempt {}: {failure:?}",
                     entry.name,
@@ -964,7 +1031,7 @@ async fn download(
                 );
                 queue.push_front((entry, tries + 1));
             }
-            Err(failure) => {
+            Err(FileErr::Http(failure)) => {
                 log::warn!("cache file {} failed: {failure:?}", entry.name);
                 failed += 1;
                 streak += 1;
@@ -975,7 +1042,7 @@ async fn download(
             }
         }
     }
-    (downloaded, failed)
+    (downloaded, failed, blocked)
 }
 
 /// One attempt at one file (`tries` before it). Timeouts and stalls slow the
@@ -988,29 +1055,31 @@ async fn attempt(
     tries: u32,
     tracker: &Mutex<Tracker>,
     pace: &Mutex<Pace>,
-) -> (Entry, u32, Result<(), Failure>) {
+) -> (Entry, u32, Result<(), FileErr>) {
     if tries > 0 && !job.cancel.sleep(job.file_limits.delay(tries - 1)).await {
-        return (entry, tries, Err(Failure::Cancelled));
+        return (entry, tries, Err(FileErr::Http(Failure::Cancelled)));
     }
     let epoch = lock(pace).epoch();
     let result = fetch_once(job, &list.url(&entry), dir, &entry, tracker).await;
     match &result {
-        Ok(()) => lock(pace).success(),
-        Err(Failure::Slow(_)) => lock(pace).slow(epoch),
-        Err(_) => {}
+        Ok(()) | Err(FileErr::Blocked(_)) => lock(pace).success(),
+        Err(FileErr::Http(Failure::Slow(_))) => lock(pace).slow(epoch),
+        Err(FileErr::Http(_)) => {}
     }
     (entry, tries, result)
 }
 
-/// Downloads to a temp name next to the target and renames it into place
-/// once size and CRC check out. Nothing is left behind on failure or cancel.
+/// Downloads to a temp name next to the target, validates concurrently with
+/// RWGuard on the blocking pool, and renames into place once size, CRC and
+/// RenderWare structure check out. Nothing is left behind on failure, block or
+/// cancel.
 async fn fetch_once(
     job: &Job<'_>,
     url: &str,
     dir: &Path,
     entry: &Entry,
     tracker: &Mutex<Tracker>,
-) -> Result<(), Failure> {
+) -> Result<(), FileErr> {
     let temp = dir.join(temp_name(&entry.name));
     let target = dir.join(&entry.name);
     let mut counted = 0u64;
@@ -1021,20 +1090,37 @@ async fn fetch_once(
     .await
     {
         Ok(()) => {
-            // Off the download task: an antivirus may hold the rename up.
+            // Off the download task: RWGuard validation + rename run on the
+            // blocking pool in parallel with the other downloads in flight.
             let (from, to) = (temp.clone(), target);
-            tokio::task::spawn_blocking(move || with_writable(&to, || fs::rename(&from, &to)))
-                .await
-                .map_err(|e| Failure::Fatal(e.to_string()))
-                .and_then(|renamed| {
-                    renamed.map_err(|error| Failure::Fatal(format!("rename: {error}")))
-                })
+            let name = entry.name.clone();
+            let size = entry.size;
+            let guard = job.guard.clone();
+            match tokio::task::spawn_blocking(move || {
+                if let Some(ref g) = guard {
+                    g.validate_temp(&from, &name, size)
+                        .map_err(FileErr::Blocked)?;
+                }
+                with_writable(&to, || fs::rename(&from, &to))
+                    .map_err(|error| FileErr::Http(Failure::Fatal(format!("rename: {error}"))))?;
+                if let Some(ref g) = guard {
+                    g.record_landed(&to, &name, size);
+                }
+                Ok(())
+            })
+            .await
+            {
+                Ok(res) => res,
+                Err(e) => Err(FileErr::Http(Failure::Fatal(e.to_string()))),
+            }
         }
-        Err(error) => Err(error),
+        Err(error) => Err(FileErr::Http(error)),
     };
-    if result.is_err() {
+    if let Err(ref err) = result {
         let _ = tokio::fs::remove_file(&temp).await;
-        lock(tracker).rollback(counted);
+        if !matches!(err, FileErr::Blocked(_)) {
+            lock(tracker).rollback(counted);
+        }
     }
     result
 }
@@ -1145,21 +1231,35 @@ pub async fn install(app: &AppHandle) -> CacheInstallResult {
     let report: Reporter =
         Arc::new(move |p: Progress| events::emit(&event_app, CACHE_INSTALL_PROGRESS, p));
     let result = CacheInstallResult::from_run(run(app, &report, &busy.cancel).await);
-    match (&result.error, result.cancelled, result.failed) {
-        (None, None, 0) => report(Progress::new(Phase::Done, 100.0)),
-        (None, Some(_), failed) => {
+    match (
+        &result.error,
+        result.cancelled,
+        result.failed,
+        result.blocked,
+    ) {
+        (None, None, 0, 0) => report(Progress::new(Phase::Done, 100.0)),
+        (None, None, 0, blocked) => {
+            log::warn!("cache sync: RWGuard blocked {blocked} unsafe model(s)");
+            let message = if blocked == 1 {
+                "RWGuard bloqueó 1 modelo inseguro durante la descarga.".to_string()
+            } else {
+                format!("RWGuard bloqueó {blocked} modelos inseguros durante la descarga.")
+            };
+            report(Progress::new(Phase::Error, 0.0).message(message));
+        }
+        (None, Some(_), failed, _) => {
             log::info!("cache sync cancelled, {failed} files left for the game");
             // Not an error: the row goes straight to the re-check.
             report(
                 Progress::new(Phase::Preflight, 0.0).message("Comprobando archivos del caché..."),
             );
         }
-        (None, None, failed) => {
+        (None, None, failed, _) => {
             log::warn!("cache sync: {failed} files could not be downloaded");
             let message = missing_message(failed as usize);
             report(Progress::new(Phase::Error, 0.0).message(message));
         }
-        (Some(error), _, _) => {
+        (Some(error), _, _, _) => {
             log::warn!("cache sync failed: {error}");
             report(Progress::new(Phase::Error, 0.0).message(error.clone()));
         }
@@ -1209,8 +1309,17 @@ async fn run(app: &AppHandle, report: &Reporter, cancel: &Cancel) -> Result<Summ
     );
 
     let started = Instant::now();
-    let job = Job::new(ctx.api.client(), report, cancel, &package_dir);
-    let summary = sync(&job, list, &dir).await?;
+    let guard = rwguard::make_cache_guard(app, &dir);
+    let job = Job::new(
+        ctx.api.client(),
+        report,
+        cancel,
+        &package_dir,
+        Some(guard.clone()),
+    );
+    let sync_result = sync(&job, list, &dir).await;
+    rwguard::finish_cache_guard(app, &dir, &guard);
+    let summary = sync_result?;
     log::info!("cache sync: {summary:?} in {:?}", started.elapsed());
     if summary.skipped > 0 && !summary.cancelled {
         log::warn!("cache sync gave up: the connection seems to be gone");

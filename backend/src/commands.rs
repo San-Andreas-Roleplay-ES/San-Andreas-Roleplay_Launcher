@@ -18,6 +18,7 @@ use crate::install::verify::{self, SampVerificationResult};
 use crate::mods::{self, ModsHealth, ModsSyncResult, Request};
 use crate::net::manifest::{self, LauncherManifest};
 use crate::net::query::{self, PingResult};
+use crate::rwguard::{self, RwGuardActionResult, RwGuardStatus};
 use crate::Ctx;
 
 // ---- game ----
@@ -114,6 +115,36 @@ pub async fn install_cache(app: AppHandle) -> CacheInstallResult {
 #[tauri::command]
 pub fn cancel_cache(app: AppHandle) -> bool {
     cache::cancel(&app)
+}
+
+// ---- rwguard ----
+
+/// Current RWGuard protection summary, active/blocked threats and recent
+/// validation history for the server cache folder.
+#[tauri::command]
+pub fn rwguard_status(app: AppHandle) -> RwGuardStatus {
+    rwguard::status(&app)
+}
+
+/// Scans the server cache folder with RWGuard. Unchanged models already in
+/// persistent history are skipped unless `force` is `true`.
+#[tauri::command]
+pub async fn rwguard_scan(app: AppHandle, force: Option<bool>) -> RwGuardStatus {
+    rwguard::scan_cache(&app, force.unwrap_or(false)).await
+}
+
+/// Repairs one flagged model (or all active threats when `file_name` is
+/// omitted) using RWGuard's native RenderWare truncation.
+#[tauri::command]
+pub async fn rwguard_heal(app: AppHandle, file_name: Option<String>) -> RwGuardActionResult {
+    rwguard::heal(&app, file_name).await
+}
+
+/// Deletes one flagged model (or all active threats) from the cache folder and
+/// clears matching blocked-download notices.
+#[tauri::command]
+pub async fn rwguard_delete(app: AppHandle, file_name: Option<String>) -> RwGuardActionResult {
+    rwguard::delete_threats(&app, file_name).await
 }
 
 // ---- mods ----

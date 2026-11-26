@@ -4,15 +4,18 @@ import HealthCheckItem from "./HealthCheckItem.vue"
 import type { ItemAction, InlineAction } from "./HealthCheckItem.vue"
 import GtaInstallRow from "./GtaInstallRow.vue"
 import GtaPicker from "./GtaPicker.vue"
+import RwGuardPanel from "./RwGuardPanel.vue"
 import ModsPanel from "@/components/mods/ModsPanel.vue"
 import type { HealthEntry } from "@/stores/healthCheck"
 import { useHealthCheckStore } from "@/stores/healthCheck"
 import { MODS_BUTTON_ID, useModsStore } from "@/stores/mods"
+import { RWGUARD_BUTTON_ID, useRwGuardStore } from "@/stores/rwguard"
 import { useServerPing } from "@/composables/useServerPing"
 import { usePingCountdown } from "@/composables/usePingCountdown"
 
 const health = useHealthCheckStore()
 const mods = useModsStore()
+const rwguard = useRwGuardStore()
 
 const COOLDOWN_MS = 1000
 const onCooldown = ref(false)
@@ -38,7 +41,8 @@ const disabled = computed(
     health.installing ||
     health.gtaInstalling ||
     health.cacheInstalling ||
-    mods.working,
+    mods.working ||
+    rwguard.working,
 )
 
 function handleRecheck() {
@@ -60,6 +64,18 @@ function inlineActionFor(entry: HealthEntry): InlineAction | undefined {
       badge: mods.attention,
       badgeLabel: "(hay algo para revisar)",
       onClick: () => mods.openPanel(),
+    }
+  }
+  if (entry.id === "cache") {
+    if (entry.state === "checking") return undefined
+    return {
+      id: RWGUARD_BUTTON_ID,
+      label: "RWGuard",
+      icon: "pi-shield",
+      title: "Ver protección RWGuard e historial de modelos validados",
+      badge: rwguard.attention,
+      badgeLabel: "(amenazas detectadas por RWGuard)",
+      onClick: () => rwguard.openPanel(),
     }
   }
   if (entry.id !== "gta") return undefined
@@ -211,6 +227,8 @@ onMounted(() => {
           download-title="Descargando caché del servidor"
           cancellable
           :cancelling="health.cacheCancelling"
+          :guard-badge="rwguard.liveBadge"
+          :guard-warning="rwguard.liveBadgeWarning"
           @cancel="health.cancelCache()"
         />
         <HealthCheckItem
@@ -233,6 +251,7 @@ onMounted(() => {
       @close="health.closeGtaPicker"
     />
     <ModsPanel :open="mods.panelOpen" @close="mods.closePanel()" />
+    <RwGuardPanel :open="rwguard.panelOpen" @close="rwguard.closePanel()" />
   </section>
 </template>
 
